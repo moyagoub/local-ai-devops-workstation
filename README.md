@@ -4,6 +4,29 @@ A production-style, **100% local AI-assisted DevOps & Cloud engineering workstat
 
 This repository provides tested configurations, Dockerfiles, and CI/CD templates to run local LLMs on an NVIDIA GPU alongside **VS Code**, **Continue**, **Docker**, **Terraform**, **Kubernetes**, and a containerized **Jenkins** controller—with zero cloud API costs and zero Docker Hub (`docker.io`) CDN dependency.
 
+## Architecture Overview
+
+```mermaid
+flowchart LR
+    subgraph Windows["Windows 11 Host (RTX 3080 16GB VRAM / 32GB RAM)"]
+        Ollama["Ollama Server (:11434)<br/>• qwen2.5-coder:1.5b (Autocomplete)<br/>• qwen2.5-coder:14b (DevOps Agent)<br/>• qwen3-coder:30b (Architecture)"]
+    end
+
+    subgraph WSL["WSL2: Ubuntu 24.04"]
+        VSCode["VS Code + Continue<br/>(.github/copilot-instructions.md)"]
+        GitRepo["Local Git Repo<br/>(/workspace/devops-lab)"]
+        Jenkins["Jenkins LTS Container (:8080)<br/>OpenJDK 21 + Docker CLI"]
+        DockerEngine["Docker Engine<br/>(public.ecr.aws mirrors)"]
+        AppContainer["Test Container (:8080)<br/>Bridge IP Health Check"]
+    end
+
+    VSCode <-->|"HTTP API"| Ollama
+    Jenkins -->|"Local Git SCM"| GitRepo
+    Jenkins -->|"docker.sock"| DockerEngine
+    DockerEngine -->|"Builds & Runs"| AppContainer
+    Jenkins -->|"curl Bridge IP"| AppContainer
+```
+
 ## Key Features
 
 - **Dual-Model GPU Residency (`Ollama`):** Runs `qwen2.5-coder:1.5b` for sub-second inline autocomplete alongside `qwen2.5-coder:14b` for daily DevOps chat/agent tasks simultaneously in VRAM (`100% GPU`), with `qwen3-coder:30b` available for heavy architectural refactoring.
