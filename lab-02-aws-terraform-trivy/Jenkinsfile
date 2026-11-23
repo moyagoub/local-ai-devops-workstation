@@ -27,10 +27,10 @@ pipeline {
           docker run -d --name localstack-lab02 \
             --network lab02-net \
             -e SERVICES=s3,iam,sts \
-            public.ecr.aws/localstack/localstack:latest
+            public.ecr.aws/localstack/localstack:3.8.1
 
           for i in $(seq 1 15); do
-            if docker exec localstack-lab02 curl -sf http://localhost:4566/_localstack/health; then
+            if docker exec localstack-lab02 python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:4566/_localstack/health')"; then
               echo "LocalStack is healthy!"
               break
             fi
