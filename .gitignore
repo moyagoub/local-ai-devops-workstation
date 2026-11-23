@@ -1,0 +1,8 @@
+jenkins/jenkins.war
+*.tfstate
+*.tfstate.*
+.terraform/
+generated-*.json
+__pycache__/
+*.pyc
+.DS_Store

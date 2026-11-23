@@ -1,0 +1,30 @@
+pipeline {
+  agent any
+  stages {
+    stage('Build Docker Image') {
+      steps {
+        sh '''
+          set -e
+          docker build -t devops-lab-api:local .
+        '''
+      }
+    }
+    stage('Verify Container Health') {
+      steps {
+        sh '''
+          set -e
+          docker run -d --name test-api devops-lab-api:local
+          sleep 2
+          API_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' test-api)
+          curl -f "http://${API_IP}:8080/health"
+        '''
+      }
+    }
+  }
+  post {
+    always {
+      sh 'docker rm -f test-api || true'
+      cleanWs()
+    }
+  }
+}
