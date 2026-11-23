@@ -30,8 +30,7 @@ pipeline {
             public.ecr.aws/localstack/localstack:latest
 
           for i in $(seq 1 15); do
-            if docker run --rm --network lab02-net public.ecr.aws/docker/library/curlimages/curl:latest \
-              -sf http://localstack-lab02:4566/_localstack/health; then
+            if docker exec localstack-lab02 curl -sf http://localhost:4566/_localstack/health; then
               echo "LocalStack is healthy!"
               break
             fi
