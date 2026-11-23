@@ -1,0 +1,78 @@
+pipeline {
+  agent any
+
+  environment {
+    TF_IN_AUTOMATION = 'true'
+  }
+
+  stages {
+    stage('Trivy IaC Security Scan') {
+      steps {
+        sh '''
+          set -e
+          docker run --rm \
+            -v "$WORKSPACE/lab-02-aws-terraform-trivy/terraform:/src" \
+            ghcr.io/aquasecurity/trivy:latest config --severity HIGH,CRITICAL --exit-code 1 /src
+        '''
+      }
+    }
+
+    stage('Start LocalStack AWS Emulator') {
+      steps {
+        sh '''
+          set -e
+          docker rm -f localstack-lab02 || true
+          docker run -d --name localstack-lab02 \
+            -e SERVICES=s3,iam,sts \
+            public.ecr.aws/localstack/localstack:latest
+          sleep 6
+          LS_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' localstack-lab02)
+          curl -f "http://${LS_IP}:4566/_localstack/health"
+        '''
+      }
+    }
+
+    stage('Terraform Init, Plan & Apply') {
+      steps {
+        sh '''
+          set -e
+          LS_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' localstack-lab02)
+          TF_DIR="$WORKSPACE/lab-02-aws-terraform-trivy/terraform"
+
+          docker run --rm -v "$TF_DIR:/infra" -w /infra \
+            public.ecr.aws/hashicorp/terraform:1.9 init -input=false
+
+          docker run --rm -v "$TF_DIR:/infra" -w /infra \
+            public.ecr.aws/hashicorp/terraform:1.9 plan \
+            -var="localstack_endpoint=http://${LS_IP}:4566" \
+            -out=tfplan -input=false
+
+          docker run --rm -v "$TF_DIR:/infra" -w /infra \
+            public.ecr.aws/hashicorp/terraform:1.9 apply -auto-approve tfplan
+        '''
+      }
+    }
+
+    stage('Verify S3 Bucket in LocalStack') {
+      steps {
+        sh '''
+          set -e
+          LS_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' localstack-lab02)
+          docker run --rm \
+            -e AWS_ACCESS_KEY_ID=test \
+            -e AWS_SECRET_ACCESS_KEY=test \
+            -e AWS_DEFAULT_REGION=us-east-1 \
+            public.ecr.aws/aws-cli/aws-cli:latest \
+            --endpoint-url="http://${LS_IP}:4566" s3 ls
+        '''
+      }
+    }
+  }
+
+  post {
+    always {
+      sh 'docker rm -f localstack-lab02 || true'
+      cleanWs()
+    }
+  }
+}
