@@ -24,7 +24,7 @@ pipeline {
       steps {
         sh '''
           set -e
-          docker build -t "${IMAGE_TAG}" "${HOST_REPO_DIR}/starter-lab"
+          docker build -t "${IMAGE_TAG}" "${WORKSPACE}/starter-lab"
         '''
       }
     }
@@ -52,7 +52,7 @@ pipeline {
       steps {
         sh '''
           set -e
-          kubectl --kubeconfig="${KUBECONFIG}" apply -f "${HOST_REPO_DIR}/lab-03-kubernetes-kind/k8s/"
+          kubectl --kubeconfig="${KUBECONFIG}" apply -f "${WORKSPACE}/lab-03-kubernetes-kind/k8s/"
           kubectl --kubeconfig="${KUBECONFIG}" -n devops-lab rollout status deployment/devops-lab-api --timeout=60s
           kubectl --kubeconfig="${KUBECONFIG}" -n devops-lab get pods,svc -o wide
 
