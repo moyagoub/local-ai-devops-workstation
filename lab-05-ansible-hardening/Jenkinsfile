@@ -2,7 +2,8 @@ pipeline {
   agent any
 
   environment {
-    HOST_ANSIBLE_DIR = '/home/moyagoub/local-ai-devops-workstation/lab-05-ansible-hardening/ansible'
+    HOST_REPO_ROOT = "${env.HOST_REPO_DIR ?: '/home/moyagoub/local-ai-devops-workstation'}"
+    HOST_ANSIBLE_DIR = '${HOST_REPO_ROOT}/lab-05-ansible-hardening/ansible'
     TARGET_CONTAINER = 'ansible-target-lab05'
   }
 

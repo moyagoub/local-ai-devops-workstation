@@ -1,0 +1,30 @@
+name: DevOps Config & Security Validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+
+      - name: Check Terraform Formatting
+        run: |
+          terraform -chdir=starter-lab/terraform fmt -check
+          terraform -chdir=lab-02-aws-terraform-trivy/terraform fmt -check
+          terraform -chdir=lab-04-azure-terraform-azurite/terraform fmt -check
+
+      - name: Validate Ansible Playbook
+        run: |
+          pip install ansible-core ansible-lint
+          ansible-lint lab-05-ansible-hardening/ansible/playbooks/harden_and_deploy.yml
+          ansible-playbook --syntax-check -i lab-05-ansible-hardening/ansible/inventory/hosts.ini lab-05-ansible-hardening/ansible/playbooks/harden_and_deploy.yml

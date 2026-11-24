@@ -2,9 +2,10 @@ pipeline {
   agent any
 
   environment {
+    HOST_REPO_ROOT = "${env.HOST_REPO_DIR ?: '/home/moyagoub/local-ai-devops-workstation'}"
     K3S_NAME      = 'lab03-k3s'
     IMAGE_TAG     = 'devops-lab-api:v1.0.0'
-    HOST_REPO_DIR = '/home/moyagoub/local-ai-devops-workstation'
+    HOST_REPO_DIR = '${HOST_REPO_ROOT}'
     KUBECONFIG    = '/tmp/lab03-kubeconfig'
   }
 
