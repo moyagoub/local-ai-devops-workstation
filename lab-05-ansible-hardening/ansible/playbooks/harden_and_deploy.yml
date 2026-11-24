@@ -1,10 +1,19 @@
 ---
 - name: Harden Linux Server and Deploy Hardened Web Service
   hosts: web_servers
-  become: true
+  gather_facts: false
+  become: false
   vars:
     admin_user: devops
     env_name: lab05-staging
+
+  pre_tasks:
+    - name: Bootstrap Python3 on minimal target container
+      ansible.builtin.raw: test -e /usr/bin/python3 || (apt-get update && apt-get install -y --no-install-recommends python3 sudo)
+      changed_when: false
+
+    - name: Gather system facts after Python3 bootstrap
+      ansible.builtin.setup:
 
   tasks:
     - name: Ensure admin group exists
