@@ -1,8 +1,8 @@
 # Local AI DevOps & Cloud Workstation
 
-A production-style, **100% local AI-assisted DevOps & Cloud engineering workstation** running on Windows 11 + WSL2 (Ubuntu).
+A production-style, **100% local AI-assisted DevOps, Cloud & SRE engineering workstation** running on Windows 11 + WSL2 (Ubuntu).
 
-This repository provides tested configurations, Dockerfiles, and CI/CD labs to run local LLMs on an NVIDIA GPU alongside **VS Code**, **Continue**, **Docker**, **Terraform**, **Kubernetes (K3s)**, **Trivy**, **LocalStack (AWS)**, **Azurite (Azure)**, and a containerized **Jenkins** controller—with zero cloud API costs and zero Docker Hub (`docker.io`) CDN dependency.
+This repository provides tested configurations, Dockerfiles, and CI/CD labs to run local LLMs on an NVIDIA GPU alongside **VS Code**, **Continue**, **Docker**, **Terraform**, **Kubernetes (K3s)**, **Ansible**, **Prometheus**, **Grafana**, **Trivy**, **LocalStack (AWS)**, **Azurite (Azure)**, and a containerized **Jenkins** controller—with zero cloud API costs and zero Docker Hub (`docker.io`) CDN dependency.
 
 ## Architecture Overview
 
@@ -16,11 +16,13 @@ flowchart LR
         VSCode["VS Code + Continue<br/>(.github/copilot-instructions.md)"]
         GitRepo["Local Git Repos<br/>(/workspace/*)"]
         Jenkins["Jenkins LTS Container (:8080)<br/>OpenJDK 21 + Docker CLI + kubectl"]
-        DockerEngine["Docker Engine<br/>(public.ecr.aws / ://microsoft.com / ghcr.io / registry.k8s.io)"]
+        DockerEngine["Docker Engine<br/>(public.ecr.aws / ://microsoft.com / ghcr.io / quay.io / registry.k8s.io)"]
         Lab01["Lab 01: Container Build & Health Check"]
         Lab02["Lab 02: AWS Trivy + Terraform + LocalStack"]
         Lab03["Lab 03: Kubernetes Trivy + K3s Rollout"]
         Lab04["Lab 04: Azure Trivy + Terraform + Azurite"]
+        Lab05["Lab 05: Ansible Hardening & Idempotency"]
+        Lab06["Lab 06: Prometheus & Grafana Observability"]
     end
 
     VSCode <-->|"HTTP API"| Ollama
@@ -30,6 +32,8 @@ flowchart LR
     DockerEngine --> Lab02
     DockerEngine --> Lab03
     DockerEngine --> Lab04
+    DockerEngine --> Lab05
+    DockerEngine --> Lab06
 ```
 
 ## Repository Structure
@@ -43,6 +47,8 @@ flowchart LR
 | `lab-02-aws-terraform-trivy/` | **Lab 02:** DevSecOps AWS pipeline with Trivy IaC scanning, LocalStack S3/KMS emulation, Terraform provisioning, and AWS CLI verification. |
 | `lab-03-kubernetes-kind/` | **Lab 03:** Hardened Kubernetes CI/CD pipeline with Trivy K8s scanning, self-contained K3s node (`registry.k8s.io/pause:3.10`), 2-replica rollout, and smoke testing. |
 | `lab-04-azure-terraform-azurite/` | **Lab 04:** Azure DevSecOps pipeline with Trivy AzureRM scanning, Terraform `fmt`/`validate`, Azurite Blob Storage emulator, and Azure CLI verification. |
+| `lab-05-ansible-hardening/` | **Lab 05:** Ansible server hardening & Nginx deployment pipeline with `ansible-lint`, `changed=0` idempotency gate, and security header checks. |
+| `lab-06-prometheus-grafana/` | **Lab 06:** SRE observability pipeline validating Prometheus configs/alerts (`promtool`), scraping metrics from Python API + Node Exporter, and verifying Grafana provisioning. |
 | `scripts/explain-log.sh` | CLI helper to diagnose failed Jenkins/Terraform/K8s logs using your local GPU Ollama server. |
 
 ## Quick Start Guide
@@ -106,12 +112,6 @@ docker exec jenkins-local git config --global --add safe.directory /workspace/lo
 docker exec jenkins-local git config --global --add safe.directory /workspace/local-ai-devops-workstation
 docker exec jenkins-local cat /var/jenkins_home/secrets/initialAdminPassword
 ```
-
-### 4. Available Jenkins Labs
-- **Lab 01 (`starter-lab/Jenkinsfile`):** Builds a multi-stage Python container from `public.ecr.aws` and verifies its `/health` endpoint via Docker bridge IP.
-- **Lab 02 (`lab-02-aws-terraform-trivy/Jenkinsfile`):** Runs Trivy IaC security scanning (`--exit-code 1`), spins up LocalStack (`s3,iam,sts,kms`), provisions a KMS-encrypted S3 bucket with Terraform, uploads a test artifact, verifies bucket encryption via AWS CLI, and cleans up all ephemeral resources.
-- **Lab 03 (`lab-03-kubernetes-kind/Jenkinsfile`):** Scans hardened Kubernetes manifests with Trivy, boots a self-contained K3s cluster (`local-k3s-node:v1.31.2`), imports the built image into K3s `containerd`, rolls out 2 non-root read-only pods behind a `ClusterIP` Service, verifies `/health`, and tears down the cluster.
-- **Lab 04 (`lab-04-azure-terraform-azurite/Jenkinsfile`):** Scans AzureRM Terraform manifests with Trivy, runs `terraform fmt -check` and `terraform validate` offline, launches Microsoft's Azurite Blob Storage emulator, creates a private container, uploads `azure-build.txt` via Azure CLI, and cleans up all resources.
 
 ## License
 MIT License
