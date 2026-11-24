@@ -4,6 +4,7 @@ pipeline {
   environment {
     TF_IN_AUTOMATION = 'true'
     HOST_TF_DIR      = '/home/moyagoub/local-ai-devops-workstation/lab-04-azure-terraform-azurite/terraform'
+    MCR_HOST         = 'mcr.microsoft.com'
     AZURITE_CONN     = 'DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite-lab04:10000/devstoreaccount1;'
   }
 
@@ -39,26 +40,29 @@ pipeline {
       steps {
         sh '''
           set -e
+          AZURITE_IMG="${MCR_HOST}/azure-storage/azurite:latest"
+          AZCLI_IMG="${MCR_HOST}/azure-cli:latest"
+
           docker rm -f azurite-lab04 || true
           docker network create lab04-net || true
 
           docker run -d --name azurite-lab04 \
             --network lab04-net \
-            ://microsoft.com \
+            "${AZURITE_IMG}" \
             azurite-blob --blobHost 0.0.0.0 --blobPort 10000
 
           sleep 3
 
           echo "=== 1. Creating Azure Blob Container in Azurite ==="
           docker run --rm --network lab04-net \
-            ://microsoft.com \
+            "${AZCLI_IMG}" \
             az storage container create \
               --name jenkins-artifacts \
               --connection-string "${AZURITE_CONN}"
 
           echo "=== 2. Uploading & Listing Build Artifact via Azure CLI ==="
           docker run --rm --network lab04-net \
-            ://microsoft.com \
+            "${AZCLI_IMG}" \
             sh -c "echo 'azure-lab04-verified' > /tmp/azure-build.txt && \
                    az storage blob upload --container-name jenkins-artifacts --file /tmp/azure-build.txt --name azure-build.txt --connection-string '${AZURITE_CONN}' && \
                    az storage blob list --container-name jenkins-artifacts --connection-string '${AZURITE_CONN}' -o table"
