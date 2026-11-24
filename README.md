@@ -16,7 +16,7 @@ flowchart LR
         VSCode["VS Code + Continue<br/>(.github/copilot-instructions.md)"]
         GitRepo["Local Git Repos<br/>(/workspace/*)"]
         Jenkins["Jenkins LTS Container (:8080)<br/>OpenJDK 21 + Docker CLI + kubectl"]
-        DockerEngine["Docker Engine<br/>(public.ecr.aws / ://microsoft.com / ghcr.io / quay.io / registry.k8s.io)"]
+        DockerEngine["Docker Engine<br/>(public.ecr.aws / mcr.microsoft.com / ghcr.io / quay.io / registry.k8s.io)"]
         Lab01["Lab 01: Container Build & Health Check"]
         Lab02["Lab 02: AWS Trivy + Terraform + LocalStack"]
         Lab03["Lab 03: Kubernetes Trivy + K3s Rollout"]
