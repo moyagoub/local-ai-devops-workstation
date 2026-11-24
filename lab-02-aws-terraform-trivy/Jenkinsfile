@@ -2,9 +2,8 @@ pipeline {
   agent any
 
   environment {
-    HOST_REPO_ROOT = "${env.HOST_REPO_DIR ?: '/home/moyagoub/local-ai-devops-workstation'}"
     TF_IN_AUTOMATION = 'true'
-    HOST_TF_DIR = '${HOST_REPO_ROOT}/lab-02-aws-terraform-trivy/terraform'
+    HOST_TF_DIR = '${HOST_REPO_DIR:-/home/moyagoub/local-ai-devops-workstation}/lab-02-aws-terraform-trivy/terraform'
   }
 
   stages {

@@ -2,8 +2,7 @@ pipeline {
   agent any
 
   environment {
-    HOST_REPO_ROOT = "${env.HOST_REPO_DIR ?: '/home/moyagoub/local-ai-devops-workstation'}"
-    HOST_LAB06_DIR = '${HOST_REPO_ROOT}/lab-06-prometheus-grafana'
+    HOST_LAB06_DIR = '${HOST_REPO_DIR:-/home/moyagoub/local-ai-devops-workstation}/lab-06-prometheus-grafana'
   }
 
   stages {

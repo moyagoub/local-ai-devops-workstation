@@ -2,9 +2,8 @@ pipeline {
   agent any
 
   environment {
-    HOST_REPO_ROOT = "${env.HOST_REPO_DIR ?: '/home/moyagoub/local-ai-devops-workstation'}"
     TF_IN_AUTOMATION = 'true'
-    HOST_TF_DIR      = '${HOST_REPO_ROOT}/lab-04-azure-terraform-azurite/terraform'
+    HOST_TF_DIR      = '${HOST_REPO_DIR:-/home/moyagoub/local-ai-devops-workstation}/lab-04-azure-terraform-azurite/terraform'
     MCR_HOST         = 'mcr.microsoft.com'
     AZURITE_CONN     = 'DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite-lab04:10000/devstoreaccount1;'
   }
