@@ -1,0 +1,77 @@
+pipeline {
+  agent any
+
+  environment {
+    CLUSTER_NAME  = 'lab03-k8s'
+    IMAGE_TAG     = 'devops-lab-api:v1.0.0'
+    HOST_REPO_DIR = '/home/moyagoub/local-ai-devops-workstation'
+    KUBECONFIG    = '/tmp/lab03-kubeconfig'
+  }
+
+  stages {
+    stage('Trivy Kubernetes Security Scan') {
+      steps {
+        sh '''
+          set -e
+          docker run --rm \
+            -v "${HOST_REPO_DIR}/lab-03-kubernetes-kind/k8s:/k8s:ro" \
+            ghcr.io/aquasecurity/trivy:latest config --severity HIGH,CRITICAL --exit-code 1 /k8s
+        '''
+      }
+    }
+
+    stage('Build Container Image') {
+      steps {
+        sh '''
+          set -e
+          docker build -t "${IMAGE_TAG}" "${HOST_REPO_DIR}/starter-lab"
+        '''
+      }
+    }
+
+    stage('Create Kind Cluster & Load Image') {
+      steps {
+        sh '''
+          set -e
+          kind delete cluster --name "${CLUSTER_NAME}" || true
+          kind create cluster \
+            --name "${CLUSTER_NAME}" \
+            --image public.ecr.aws/eks-distro/kubernetes-sigs/kind/node:v1.31.2 \
+            --kubeconfig "${KUBECONFIG}" \
+            --wait 60s
+
+          CP_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${CLUSTER_NAME}-control-plane")
+          sed -i "s|https://127.0.0.1:[0-9]*|https://${CP_IP}:6443|g" "${KUBECONFIG}"
+
+          kind load docker-image "${IMAGE_TAG}" --name "${CLUSTER_NAME}"
+        '''
+      }
+    }
+
+    stage('Deploy Manifests & Verify Rollout') {
+      steps {
+        sh '''
+          set -e
+          kubectl --kubeconfig="${KUBECONFIG}" apply -f "${HOST_REPO_DIR}/lab-03-kubernetes-kind/k8s/"
+          kubectl --kubeconfig="${KUBECONFIG}" -n devops-lab rollout status deployment/devops-lab-api --timeout=60s
+          kubectl --kubeconfig="${KUBECONFIG}" -n devops-lab get pods,svc -o wide
+
+          kubectl --kubeconfig="${KUBECONFIG}" -n devops-lab run smoke-test \
+            --image=public.ecr.aws/docker/library/alpine:3.20 \
+            --rm -i --restart=Never -- \
+            sh -c "apk add --no-cache curl >/dev/null && curl -sf http://cluster.local"
+        '''
+      }
+    }
+  }
+
+  post {
+    always {
+      sh '''
+        kind delete cluster --name "${CLUSTER_NAME}" || true
+        rm -f "${KUBECONFIG}" || true
+      '''
+      cleanWs()
+    }
+  }
+}
