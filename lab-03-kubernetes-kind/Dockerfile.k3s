@@ -1,0 +1,20 @@
+FROM public.ecr.aws/docker/library/ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    iptables \
+    iproute2 \
+    kmod \
+    && rm -rf /var/lib/apt/lists/*
+
+# Download official k3s binary directly from GitHub Releases (bypasses Docker Hub)
+RUN K3S_HOST="github.com" \
+    && K3S_PATH="k3s-io/k3s/releases/download/v1.31.2%2Bk3s1/k3s" \
+    && curl -fL "https://${K3S_HOST}/${K3S_PATH}" -o /usr/local/bin/k3s \
+    && chmod +x /usr/local/bin/k3s
+
+EXPOSE 6443
+ENTRYPOINT ["/usr/local/bin/k3s"]
+CMD ["server", "--snapshotter=native", "--disable=traefik", "--disable=servicelb"]

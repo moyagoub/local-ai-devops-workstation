@@ -2,7 +2,7 @@ pipeline {
   agent any
 
   environment {
-    CLUSTER_NAME  = 'lab03-k8s'
+    K3S_NAME      = 'lab03-k3s'
     IMAGE_TAG     = 'devops-lab-api:v1.0.0'
     HOST_REPO_DIR = '/home/moyagoub/local-ai-devops-workstation'
     KUBECONFIG    = '/tmp/lab03-kubeconfig'
@@ -29,21 +29,38 @@ pipeline {
       }
     }
 
-    stage('Create Kind Cluster & Load Image') {
+    stage('Start K3s Cluster & Import Image') {
       steps {
         sh '''
           set -e
-          kind delete cluster --name "${CLUSTER_NAME}" || true
-          kind create cluster \
-            --name "${CLUSTER_NAME}" \
-            --image registry.k8s.io/kind/node:v1.31.2 \
-            --kubeconfig "${KUBECONFIG}" \
-            --wait 60s
+          docker rm -f "${K3S_NAME}" || true
+          docker run -d --name "${K3S_NAME}" --privileged \
+            local-k3s-node:v1.31.2 \
+            server --snapshotter=native --disable=traefik --disable=servicelb
 
-          CP_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${CLUSTER_NAME}-control-plane")
-          sed -i "s|https://127.0.0.1:[0-9]*|https://${CP_IP}:6443|g" "${KUBECONFIG}"
+          # Wait for K3s to generate kubeconfig
+          for i in $(seq 1 20); do
+            if docker exec "${K3S_NAME}" test -f /etc/rancher/k3s/k3s.yaml; then
+              break
+            fi
+            sleep 2
+          done
 
-          kind load docker-image "${IMAGE_TAG}" --name "${CLUSTER_NAME}"
+          docker cp "${K3S_NAME}:/etc/rancher/k3s/k3s.yaml" "${KUBECONFIG}"
+          K3S_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${K3S_NAME}")
+          sed -i "s|https://127.0.0.1:6443|https://${K3S_IP}:6443|g" "${KUBECONFIG}"
+
+          # Wait for Kubernetes API node to become Ready
+          for i in $(seq 1 20); do
+            if kubectl --kubeconfig="${KUBECONFIG}" get nodes | grep -q " Ready"; then
+              echo "K3s node is Ready!"
+              break
+            fi
+            sleep 3
+          done
+
+          # Import local Docker image directly into K3s containerd
+          docker save "${IMAGE_TAG}" | docker exec -i "${K3S_NAME}" k3s ctr images import -
         '''
       }
     }
@@ -53,7 +70,7 @@ pipeline {
         sh '''
           set -e
           kubectl --kubeconfig="${KUBECONFIG}" apply -f "${WORKSPACE}/lab-03-kubernetes-kind/k8s/"
-          kubectl --kubeconfig="${KUBECONFIG}" -n devops-lab rollout status deployment/devops-lab-api --timeout=60s
+          kubectl --kubeconfig="${KUBECONFIG}" -n devops-lab rollout status deployment/devops-lab-api --timeout=90s
           kubectl --kubeconfig="${KUBECONFIG}" -n devops-lab get pods,svc -o wide
 
           kubectl --kubeconfig="${KUBECONFIG}" -n devops-lab run smoke-test \
@@ -68,7 +85,7 @@ pipeline {
   post {
     always {
       sh '''
-        kind delete cluster --name "${CLUSTER_NAME}" || true
+        docker rm -f "${K3S_NAME}" || true
         rm -f "${KUBECONFIG}" || true
       '''
       cleanWs()
