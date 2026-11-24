@@ -82,26 +82,26 @@ cd jenkins/
 
 HOST="ftp.belnet.be"
 PATH_WAR="mirror/ftp.jenkins-ci.org/war-stable/latest/jenkins.war"
-curl -fL "https://HOST/{PATH_WAR}" -o jenkins.war
+curl -fL "https://${HOST}/${PATH_WAR}" -o jenkins.war
 
 docker build -t local-jenkins-docker:lts .
 ```
 
 Start the container with host Docker socket access, mounted `kubectl`/`kind` binaries, and local Git SCM checkout enabled:
 ```bash
-DOCKER_GID=\$(stat -c '%g' /var/run/docker.sock)
+DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)
 
 docker run -d \
   --name jenkins-local \
   --restart unless-stopped \
   -p 8080:8080 \
   -p 50000:50000 \
-  --group-add "\$DOCKER_GID" \
+  --group-add "$DOCKER_GID" \
   -v jenkins_home:/var/jenkins_home \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /usr/local/bin/kind:/usr/local/bin/kind:ro \
   -v /usr/local/bin/kubectl:/usr/local/bin/kubectl:ro \
-  -v "\$HOME/local-ai-devops-workstation:/workspace/local-ai-devops-workstation:ro" \
+  -v "$HOME/local-ai-devops-workstation:/workspace/local-ai-devops-workstation:ro" \
   local-jenkins-docker:lts \
   java -Djava.awt.headless=true -Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true -jar /usr/share/jenkins/jenkins.war
 ```
