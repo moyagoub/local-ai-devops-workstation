@@ -2,7 +2,7 @@
 
 A production-style, **100% local AI-assisted DevOps & Cloud engineering workstation** running on Windows 11 + WSL2 (Ubuntu).
 
-This repository provides tested configurations, Dockerfiles, and CI/CD labs to run local LLMs on an NVIDIA GPU alongside **VS Code**, **Continue**, **Docker**, **Terraform**, **Kubernetes**, **Trivy**, **LocalStack**, and a containerized **Jenkins** controller—with zero cloud API costs and zero Docker Hub (`docker.io`) CDN dependency.
+This repository provides tested configurations, Dockerfiles, and CI/CD labs to run local LLMs on an NVIDIA GPU alongside **VS Code**, **Continue**, **Docker**, **Terraform**, **Kubernetes (K3s)**, **Trivy**, **LocalStack**, and a containerized **Jenkins** controller—with zero cloud API costs and zero Docker Hub (`docker.io`) CDN dependency.
 
 ## Architecture Overview
 
@@ -15,10 +15,11 @@ flowchart LR
     subgraph WSL["WSL2: Ubuntu 24.04"]
         VSCode["VS Code + Continue<br/>(.github/copilot-instructions.md)"]
         GitRepo["Local Git Repos<br/>(/workspace/*)"]
-        Jenkins["Jenkins LTS Container (:8080)<br/>OpenJDK 21 + Docker CLI"]
-        DockerEngine["Docker Engine<br/>(public.ecr.aws / ghcr.io mirrors)"]
+        Jenkins["Jenkins LTS Container (:8080)<br/>OpenJDK 21 + Docker CLI + kubectl"]
+        DockerEngine["Docker Engine<br/>(public.ecr.aws / ghcr.io / registry.k8s.io)"]
         Lab01["Lab 01: Container Build & Health Check"]
         Lab02["Lab 02: Trivy + Terraform + LocalStack AWS"]
+        Lab03["Lab 03: Trivy + K3s Kubernetes Rollout"]
     end
 
     VSCode <-->|"HTTP API"| Ollama
@@ -26,18 +27,20 @@ flowchart LR
     Jenkins -->|"docker.sock"| DockerEngine
     DockerEngine --> Lab01
     DockerEngine --> Lab02
+    DockerEngine --> Lab03
 ```
 
 ## Repository Structure
 
 | Path | Description |
 | :--- | :--- |
-| `.github/copilot-instructions.md` | AI engineering guardrails enforcing least-privilege IAM, KMS encryption, non-root containers, and Declarative Jenkinsfiles. |
+| `.github/copilot-instructions.md` | AI engineering guardrails enforcing least-privilege IAM, KMS encryption, non-root containers, K8s security contexts, and Declarative Jenkinsfiles. |
 | `configs/` | `.wslconfig` resource cap and `continue-config.yaml` dual-model VRAM setup. |
 | `jenkins/Dockerfile` | Custom OpenJDK 21 + Docker CLI Jenkins controller built without Docker Hub dependencies. |
 | `starter-lab/` | **Lab 01:** Multi-stage Python API image build + Docker bridge IP health check pipeline. |
 | `lab-02-aws-terraform-trivy/` | **Lab 02:** DevSecOps AWS pipeline with Trivy IaC scanning, LocalStack S3/KMS emulation, Terraform provisioning, and AWS CLI verification. |
-| `scripts/explain-log.sh` | CLI helper to diagnose failed Jenkins/Terraform logs using your local GPU Ollama server. |
+| `lab-03-kubernetes-kind/` | **Lab 03:** Hardened Kubernetes CI/CD pipeline with Trivy K8s scanning, self-contained K3s node (`registry.k8s.io/pause:3.10`), 2-replica rollout, and smoke testing. |
+| `scripts/explain-log.sh` | CLI helper to diagnose failed Jenkins/Terraform/K8s logs using your local GPU Ollama server. |
 
 ## Quick Start Guide
 
@@ -75,7 +78,7 @@ curl -fL "https://HOST/{PATH_WAR}" -o jenkins.war
 docker build -t local-jenkins-docker:lts .
 ```
 
-Start the container with host Docker socket access and local Git SCM checkout enabled:
+Start the container with host Docker socket access, mounted `kubectl`/`kind` binaries, and local Git SCM checkout enabled:
 ```bash
 DOCKER_GID=\$(stat -c '%g' /var/run/docker.sock)
 
@@ -87,6 +90,8 @@ docker run -d \
   --group-add "\$DOCKER_GID" \
   -v jenkins_home:/var/jenkins_home \
   -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /usr/local/bin/kind:/usr/local/bin/kind:ro \
+  -v /usr/local/bin/kubectl:/usr/local/bin/kubectl:ro \
   -v "\$HOME/local-ai-devops-workstation:/workspace/local-ai-devops-workstation:ro" \
   local-jenkins-docker:lts \
   java -Djava.awt.headless=true -Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true -jar /usr/share/jenkins/jenkins.war
@@ -101,7 +106,8 @@ docker exec jenkins-local cat /var/jenkins_home/secrets/initialAdminPassword
 
 ### 4. Available Jenkins Labs
 - **Lab 01 (`starter-lab/Jenkinsfile`):** Builds a multi-stage Python container from `public.ecr.aws` and verifies its `/health` endpoint via Docker bridge IP.
-- **Lab 02 (`lab-02-aws-terraform-trivy/Jenkinsfile`):** Runs Trivy IaC security scanning (`--exit-code 1`), spins up LocalStack (`s3,iam,sts,kms`), provisions a KMS-encrypted S3 bucket with Terraform, uploads a test artifact, verifies bucket encryption via AWS CLI, and cleans up all ephemeral containers/networks.
+- **Lab 02 (`lab-02-aws-terraform-trivy/Jenkinsfile`):** Runs Trivy IaC security scanning (`--exit-code 1`), spins up LocalStack (`s3,iam,sts,kms`), provisions a KMS-encrypted S3 bucket with Terraform, uploads a test artifact, verifies bucket encryption via AWS CLI, and cleans up all ephemeral resources.
+- **Lab 03 (`lab-03-kubernetes-kind/Jenkinsfile`):** Scans hardened Kubernetes manifests with Trivy, boots a self-contained K3s cluster (`local-k3s-node:v1.31.2`), imports the built image into K3s `containerd`, rolls out 2 non-root read-only pods behind a `ClusterIP` Service, verifies `/health`, and tears down the cluster.
 
 ## License
 MIT License
