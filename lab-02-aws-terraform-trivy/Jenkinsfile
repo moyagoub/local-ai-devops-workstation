@@ -64,12 +64,23 @@ pipeline {
       steps {
         sh '''
           set -e
+          echo "=== 1. Listing S3 Buckets ==="
           docker run --rm --network lab02-net \
-            -e AWS_ACCESS_KEY_ID=test \
-            -e AWS_SECRET_ACCESS_KEY=test \
-            -e AWS_DEFAULT_REGION=us-east-1 \
+            -e AWS_ACCESS_KEY_ID=test -e AWS_SECRET_ACCESS_KEY=test -e AWS_DEFAULT_REGION=us-east-1 \
             public.ecr.aws/aws-cli/aws-cli:latest \
             --endpoint-url="http://localstack-lab02:4566" s3 ls
+
+          echo "=== 2. Uploading & Listing Test Artifact ==="
+          docker run --rm --network lab02-net \
+            -e AWS_ACCESS_KEY_ID=test -e AWS_SECRET_ACCESS_KEY=test -e AWS_DEFAULT_REGION=us-east-1 \
+            --entrypoint /bin/sh public.ecr.aws/aws-cli/aws-cli:latest -c \
+            "echo 'build-verified' > /tmp/artifact.txt && aws --endpoint-url=http://localstack-lab02:4566 s3 cp /tmp/artifact.txt s3://legion7-devops-artifacts-lab02/artifact.txt && aws --endpoint-url=http://localstack-lab02:4566 s3 ls s3://legion7-devops-artifacts-lab02/"
+
+          echo "=== 3. Verifying KMS Encryption Policy ==="
+          docker run --rm --network lab02-net \
+            -e AWS_ACCESS_KEY_ID=test -e AWS_SECRET_ACCESS_KEY=test -e AWS_DEFAULT_REGION=us-east-1 \
+            public.ecr.aws/aws-cli/aws-cli:latest \
+            --endpoint-url="http://localstack-lab02:4566" s3api get-bucket-encryption --bucket legion7-devops-artifacts-lab02
         '''
       }
     }
