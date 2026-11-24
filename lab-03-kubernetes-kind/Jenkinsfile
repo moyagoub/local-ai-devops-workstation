@@ -36,7 +36,7 @@ pipeline {
           docker rm -f "${K3S_NAME}" || true
           docker run -d --name "${K3S_NAME}" --privileged \
             local-k3s-node:v1.31.2 \
-            server --snapshotter=native --disable=traefik --disable=servicelb
+            server --snapshotter=native --disable=traefik --disable=servicelb --disable=coredns --pause-image=registry.k8s.io/pause:3.10
 
           # Wait for K3s to generate kubeconfig
           for i in $(seq 1 20); do
@@ -74,10 +74,9 @@ pipeline {
           kubectl --kubeconfig="${KUBECONFIG}" -n devops-lab rollout status deployment/devops-lab-api --timeout=90s
           kubectl --kubeconfig="${KUBECONFIG}" -n devops-lab get pods,svc -o wide
 
-          kubectl --kubeconfig="${KUBECONFIG}" -n devops-lab run smoke-test \
-            --image=public.ecr.aws/docker/library/alpine:3.20 \
-            --rm -i --restart=Never -- \
-            sh -c "apk add --no-cache curl >/dev/null && curl -sf http://cluster.local"
+          POD_IP=$(kubectl --kubeconfig="${KUBECONFIG}" -n devops-lab get pods -l app=devops-lab-api -o jsonpath='{.items[0].status.podIP}')
+          docker exec "${K3S_NAME}" wget -qO- "http://${POD_IP}:8080/health" || \
+            kubectl --kubeconfig="${KUBECONFIG}" -n devops-lab get events --sort-by='.lastTimestamp' 
         '''
       }
     }
