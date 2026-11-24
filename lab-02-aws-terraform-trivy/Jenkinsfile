@@ -26,7 +26,7 @@ pipeline {
           docker network create lab02-net || true
           docker run -d --name localstack-lab02 \
             --network lab02-net \
-            -e SERVICES=s3,iam,sts \
+            -e SERVICES=s3,iam,sts,kms \
             public.ecr.aws/localstack/localstack:3.8.1
           sleep 5
 
