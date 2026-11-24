@@ -69,6 +69,7 @@ pipeline {
       steps {
         sh '''
           set -e
+          kubectl --kubeconfig="${KUBECONFIG}" apply -f "${WORKSPACE}/lab-03-kubernetes-kind/k8s/namespace.yaml"
           kubectl --kubeconfig="${KUBECONFIG}" apply -f "${WORKSPACE}/lab-03-kubernetes-kind/k8s/"
           kubectl --kubeconfig="${KUBECONFIG}" -n devops-lab rollout status deployment/devops-lab-api --timeout=90s
           kubectl --kubeconfig="${KUBECONFIG}" -n devops-lab get pods,svc -o wide
