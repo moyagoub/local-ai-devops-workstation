@@ -76,7 +76,16 @@ ollama pull qwen3-coder:30b      # Deep architecture & refactoring (~18 GB)
 2. Disable GitHub Copilot inline completions (bottom-right status bar) so **Continue** handles ghost-text suggestions without UI overlap.
 3. Connect VS Code to **WSL: Ubuntu** and copy `.github/copilot-instructions.md` into your repositories to enforce infrastructure best practices automatically.
 
-### 3. Build & Launch the Local Jenkins Controller
+### 3. Build & Launch the Local Jenkins Controller (1-Command Makefile)
+From the repository root:
+```bash
+make jenkins-build     # Builds local-jenkins-docker:lts (OpenJDK 21 + Docker CLI)
+make jenkins-up        # Launches Jenkins with Docker socket, kind/kubectl & Git SCM
+make jenkins-password  # Prints initial admin password
+make clean             # Removes any stray lab containers or bridge networks
+```
+
+Or run manually:
 ```bash
 cd jenkins/
 
