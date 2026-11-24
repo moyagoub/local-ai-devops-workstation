@@ -1,0 +1,44 @@
+services:
+  observability-api:
+    build: ./app
+    container_name: lab06-api
+    ports:
+      - "8086:8080"
+    networks:
+      - monitoring
+
+  node-exporter:
+    image: quay.io/prometheus/node-exporter:v1.8.2
+    container_name: lab06-node-exporter
+    networks:
+      - monitoring
+
+  prometheus:
+    image: quay.io/prometheus/prometheus:v2.55.1
+    container_name: lab06-prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
+    ports:
+      - "9090:9090"
+    networks:
+      - monitoring
+
+  grafana:
+    image: public.ecr.aws/ubuntu/grafana:latest
+    container_name: lab06-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - monitoring
+
+networks:
+  monitoring:
+    driver: bridge

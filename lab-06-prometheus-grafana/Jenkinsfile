@@ -1,0 +1,62 @@
+pipeline {
+  agent any
+
+  environment {
+    HOST_LAB06_DIR = '/home/moyagoub/local-ai-devops-workstation/lab-06-prometheus-grafana'
+  }
+
+  stages {
+    stage('Validate Prometheus Config & Alert Rules') {
+      steps {
+        sh '''
+          set -e
+          docker run --rm --entrypoint /bin/promtool \
+            -v "${HOST_LAB06_DIR}/prometheus:/etc/prometheus:ro" \
+            quay.io/prometheus/prometheus:v2.55.1 \
+            check config /etc/prometheus/prometheus.yml
+        '''
+      }
+    }
+
+    stage('Start Observability Stack') {
+      steps {
+        sh '''
+          set -e
+          docker compose -f "${HOST_LAB06_DIR}/docker-compose.yml" down -v || true
+          docker compose -f "${HOST_LAB06_DIR}/docker-compose.yml" up -d --build
+          sleep 8
+        '''
+      }
+    }
+
+    stage('Verify Prometheus Targets & Grafana API') {
+      steps {
+        sh '''
+          set -e
+          PROM_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' lab06-prometheus)
+          GRAF_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' lab06-grafana)
+          API_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' lab06-api)
+
+          echo "=== 1. Generating Traffic on Instrumented API ==="
+          curl -sf "http://${API_IP}:8080/health"
+          curl -sf "http://${API_IP}:8080/metrics"
+
+          echo "=== 2. Verifying Prometheus Active Scrape Targets ==="
+          TARGETS=$(curl -sf "http://${PROM_IP}:9090/api/v1/targets")
+          echo "$TARGETS" | grep -q '"health":"up"'
+
+          echo "=== 3. Verifying Grafana Health & Provisioned Datasource ==="
+          curl -sf "http://${GRAF_IP}:3000/api/health"
+          curl -sf -u admin:admin "http://${GRAF_IP}:3000/api/datasources" | grep -q "Prometheus"
+        '''
+      }
+    }
+  }
+
+  post {
+    always {
+      sh 'docker compose -f "${HOST_LAB06_DIR}/docker-compose.yml" down -v || true'
+      cleanWs()
+    }
+  }
+}

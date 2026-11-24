@@ -1,0 +1,10 @@
+groups:
+  - name: lab06-service-alerts
+    rules:
+      - alert: TargetDown
+        expr: up == 0
+        for: 15s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Scrape target {{ $labels.job }} is down"
