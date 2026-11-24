@@ -4,7 +4,6 @@ pipeline {
   environment {
     K3S_NAME      = 'lab03-k3s'
     IMAGE_TAG     = 'devops-lab-api:v1.0.0'
-    HOST_REPO_DIR = '${HOST_REPO_DIR:-/home/moyagoub/local-ai-devops-workstation}'
     KUBECONFIG    = '/tmp/lab03-kubeconfig'
   }
 
@@ -13,8 +12,9 @@ pipeline {
       steps {
         sh '''
           set -e
+          REPO_ROOT=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/workspace/local-ai-devops-workstation"}}{{.Source}}{{end}}{{end}}' jenkins-local)
           docker run --rm \
-            -v "${HOST_REPO_DIR}/lab-03-kubernetes-kind/k8s:/k8s:ro" \
+            -v "${REPO_ROOT}/lab-03-kubernetes-kind/k8s:/k8s:ro" \
             ghcr.io/aquasecurity/trivy:latest config --severity HIGH,CRITICAL --exit-code 1 /k8s
         '''
       }
@@ -24,6 +24,7 @@ pipeline {
       steps {
         sh '''
           set -e
+          REPO_ROOT=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/workspace/local-ai-devops-workstation"}}{{.Source}}{{end}}{{end}}' jenkins-local)
           docker build -t "${IMAGE_TAG}" "${WORKSPACE}/starter-lab"
         '''
       }
@@ -33,6 +34,7 @@ pipeline {
       steps {
         sh '''
           set -e
+          REPO_ROOT=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/workspace/local-ai-devops-workstation"}}{{.Source}}{{end}}{{end}}' jenkins-local)
           docker rm -f "${K3S_NAME}" || true
           docker run -d --name "${K3S_NAME}" --privileged \
             local-k3s-node:v1.31.2 \
@@ -69,6 +71,7 @@ pipeline {
       steps {
         sh '''
           set -e
+          REPO_ROOT=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/workspace/local-ai-devops-workstation"}}{{.Source}}{{end}}{{end}}' jenkins-local)
           kubectl --kubeconfig="${KUBECONFIG}" apply -f "${WORKSPACE}/lab-03-kubernetes-kind/k8s/namespace.yaml"
           kubectl --kubeconfig="${KUBECONFIG}" apply -f "${WORKSPACE}/lab-03-kubernetes-kind/k8s/"
           kubectl --kubeconfig="${KUBECONFIG}" -n devops-lab rollout status deployment/devops-lab-api --timeout=90s

@@ -2,7 +2,6 @@ pipeline {
   agent any
 
   environment {
-    HOST_ANSIBLE_DIR = '${HOST_REPO_DIR:-/home/moyagoub/local-ai-devops-workstation}/lab-05-ansible-hardening/ansible'
     TARGET_CONTAINER = 'ansible-target-lab05'
   }
 
@@ -11,8 +10,9 @@ pipeline {
       steps {
         sh '''
           set -e
+          REPO_ROOT=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/workspace/local-ai-devops-workstation"}}{{.Source}}{{end}}{{end}}' jenkins-local)
           docker run --rm \
-            -v "${HOST_ANSIBLE_DIR}:/ansible:ro" \
+            -v "${REPO_ROOT}/lab-05-ansible-hardening/ansible:/ansible:ro" \
             local-ansible-runner:latest \
             sh -c "ansible-lint /ansible/playbooks/harden_and_deploy.yml && ansible-playbook --syntax-check /ansible/playbooks/harden_and_deploy.yml"
         '''
@@ -23,6 +23,7 @@ pipeline {
       steps {
         sh '''
           set -e
+          REPO_ROOT=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/workspace/local-ai-devops-workstation"}}{{.Source}}{{end}}{{end}}' jenkins-local)
           docker rm -f "${TARGET_CONTAINER}" || true
           docker run -d --name "${TARGET_CONTAINER}" \
             public.ecr.aws/docker/library/ubuntu:24.04 \
@@ -35,16 +36,17 @@ pipeline {
       steps {
         sh '''
           set -e
+          REPO_ROOT=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/workspace/local-ai-devops-workstation"}}{{.Source}}{{end}}{{end}}' jenkins-local)
           echo "=== First Run: Applying Hardening & Nginx Configuration ==="
           docker run --rm \
-            -v "${HOST_ANSIBLE_DIR}:/ansible:ro" \
+            -v "${REPO_ROOT}/lab-05-ansible-hardening/ansible:/ansible:ro" \
             -v /var/run/docker.sock:/var/run/docker.sock \
             local-ansible-runner:latest \
             ansible-playbook /ansible/playbooks/harden_and_deploy.yml
 
           echo "=== Second Run: Asserting Idempotency (changed=0) ==="
           IDEMPOTENCY_OUT=$(docker run --rm \
-            -v "${HOST_ANSIBLE_DIR}:/ansible:ro" \
+            -v "${REPO_ROOT}/lab-05-ansible-hardening/ansible:/ansible:ro" \
             -v /var/run/docker.sock:/var/run/docker.sock \
             local-ansible-runner:latest \
             ansible-playbook /ansible/playbooks/harden_and_deploy.yml)
@@ -58,6 +60,7 @@ pipeline {
       steps {
         sh '''
           set -e
+          REPO_ROOT=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/workspace/local-ai-devops-workstation"}}{{.Source}}{{end}}{{end}}' jenkins-local)
           TARGET_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${TARGET_CONTAINER}")
           echo "=== Checking Security Headers on http://${TARGET_IP}:8085 ==="
           HEADERS=$(curl -sI "http://${TARGET_IP}:8085")

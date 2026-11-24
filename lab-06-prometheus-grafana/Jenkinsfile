@@ -2,7 +2,6 @@ pipeline {
   agent any
 
   environment {
-    HOST_LAB06_DIR = '${HOST_REPO_DIR:-/home/moyagoub/local-ai-devops-workstation}/lab-06-prometheus-grafana'
   }
 
   stages {
@@ -10,8 +9,9 @@ pipeline {
       steps {
         sh '''
           set -e
+          REPO_ROOT=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/workspace/local-ai-devops-workstation"}}{{.Source}}{{end}}{{end}}' jenkins-local)
           docker run --rm --entrypoint /bin/promtool \
-            -v "${HOST_LAB06_DIR}/prometheus:/etc/prometheus:ro" \
+            -v "${REPO_ROOT}/lab-06-prometheus-grafana/prometheus:/etc/prometheus:ro" \
             quay.io/prometheus/prometheus:v2.55.1 \
             check config /etc/prometheus/prometheus.yml
         '''
@@ -22,6 +22,7 @@ pipeline {
       steps {
         sh '''
           set -e
+          REPO_ROOT=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/workspace/local-ai-devops-workstation"}}{{.Source}}{{end}}{{end}}' jenkins-local)
           docker network disconnect lab06-monitoring jenkins-local || true
           docker rm -f observability-api node-exporter prometheus grafana || true
           docker network rm lab06-monitoring || true
@@ -38,15 +39,15 @@ pipeline {
 
           # 3. Start Prometheus
           docker run -d --name prometheus --network lab06-monitoring \
-            -v "${HOST_LAB06_DIR}/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
-            -v "${HOST_LAB06_DIR}/prometheus/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro" \
+            -v "${REPO_ROOT}/lab-06-prometheus-grafana/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
+            -v "${REPO_ROOT}/lab-06-prometheus-grafana/prometheus/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro" \
             quay.io/prometheus/prometheus:v2.55.1
 
           # 4. Start Grafana with auto-provisioned Prometheus datasource
           docker run -d --name grafana --network lab06-monitoring \
             -e GF_SECURITY_ADMIN_USER=admin \
             -e GF_SECURITY_ADMIN_PASSWORD=admin \
-            -v "${HOST_LAB06_DIR}/grafana/provisioning:/etc/grafana/provisioning:ro" \
+            -v "${REPO_ROOT}/lab-06-prometheus-grafana/grafana/provisioning:/etc/grafana/provisioning:ro" \
             public.ecr.aws/ubuntu/grafana:latest
 
           sleep 8
@@ -58,6 +59,7 @@ pipeline {
       steps {
         sh '''
           set -e
+          REPO_ROOT=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/workspace/local-ai-devops-workstation"}}{{.Source}}{{end}}{{end}}' jenkins-local)
           echo "=== 1. Generating Traffic & Reading Metrics on Instrumented API ==="
           curl -sf "http://observability-api:8080/health"
           curl -sf "http://observability-api:8080/metrics"

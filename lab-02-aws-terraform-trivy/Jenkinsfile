@@ -3,7 +3,6 @@ pipeline {
 
   environment {
     TF_IN_AUTOMATION = 'true'
-    HOST_TF_DIR = '${HOST_REPO_DIR:-/home/moyagoub/local-ai-devops-workstation}/lab-02-aws-terraform-trivy/terraform'
   }
 
   stages {
@@ -11,8 +10,9 @@ pipeline {
       steps {
         sh '''
           set -e
+          REPO_ROOT=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/workspace/local-ai-devops-workstation"}}{{.Source}}{{end}}{{end}}' jenkins-local)
           docker run --rm \
-            -v "${HOST_TF_DIR}:/src:ro" \
+            -v "${REPO_ROOT}/lab-02-aws-terraform-trivy/terraform:/src:ro" \
             ghcr.io/aquasecurity/trivy:latest config --severity HIGH,CRITICAL --exit-code 1 /src
         '''
       }
@@ -22,6 +22,7 @@ pipeline {
       steps {
         sh '''
           set -e
+          REPO_ROOT=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/workspace/local-ai-devops-workstation"}}{{.Source}}{{end}}{{end}}' jenkins-local)
           docker rm -f localstack-lab02 || true
           docker network create lab02-net || true
           docker run -d --name localstack-lab02 \
@@ -46,15 +47,16 @@ pipeline {
       steps {
         sh '''
           set -e
-          docker run --rm --network lab02-net -v "${HOST_TF_DIR}:/infra" -w /infra \
+          REPO_ROOT=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/workspace/local-ai-devops-workstation"}}{{.Source}}{{end}}{{end}}' jenkins-local)
+          docker run --rm --network lab02-net -v "${REPO_ROOT}/lab-02-aws-terraform-trivy/terraform:/infra" -w /infra \
             public.ecr.aws/hashicorp/terraform:1.9 init -input=false
 
-          docker run --rm --network lab02-net -v "${HOST_TF_DIR}:/infra" -w /infra \
+          docker run --rm --network lab02-net -v "${REPO_ROOT}/lab-02-aws-terraform-trivy/terraform:/infra" -w /infra \
             public.ecr.aws/hashicorp/terraform:1.9 plan \
             -var="localstack_endpoint=http://localstack-lab02:4566" \
             -out=tfplan -input=false
 
-          docker run --rm --network lab02-net -v "${HOST_TF_DIR}:/infra" -w /infra \
+          docker run --rm --network lab02-net -v "${REPO_ROOT}/lab-02-aws-terraform-trivy/terraform:/infra" -w /infra \
             public.ecr.aws/hashicorp/terraform:1.9 apply -auto-approve tfplan
         '''
       }
@@ -64,6 +66,7 @@ pipeline {
       steps {
         sh '''
           set -e
+          REPO_ROOT=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/workspace/local-ai-devops-workstation"}}{{.Source}}{{end}}{{end}}' jenkins-local)
           echo "=== 1. Listing S3 Buckets ==="
           docker run --rm --network lab02-net \
             -e AWS_ACCESS_KEY_ID=test -e AWS_SECRET_ACCESS_KEY=test -e AWS_DEFAULT_REGION=us-east-1 \
