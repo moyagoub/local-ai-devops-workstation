@@ -18,12 +18,33 @@ pipeline {
       }
     }
 
-    stage('Start Observability Stack') {
+    stage('Build & Start Observability Stack') {
       steps {
         sh '''
           set -e
-          docker compose -f "${HOST_LAB06_DIR}/docker-compose.yml" down -v || true
-          docker compose -f "${HOST_LAB06_DIR}/docker-compose.yml" up -d --build
+          docker rm -f lab06-api lab06-node-exporter lab06-prometheus lab06-grafana || true
+          docker network create lab06-monitoring || true
+
+          # 1. Build & start instrumented Flask API
+          docker build -t lab06-observability-api:local "${WORKSPACE}/lab-06-prometheus-grafana/app"
+          docker run -d --name observability-api --network lab06-monitoring lab06-observability-api:local
+
+          # 2. Start Node Exporter
+          docker run -d --name node-exporter --network lab06-monitoring quay.io/prometheus/node-exporter:v1.8.2
+
+          # 3. Start Prometheus
+          docker run -d --name prometheus --network lab06-monitoring \
+            -v "${HOST_LAB06_DIR}/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
+            -v "${HOST_LAB06_DIR}/prometheus/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro" \
+            quay.io/prometheus/prometheus:v2.55.1
+
+          # 4. Start Grafana with auto-provisioned Prometheus datasource
+          docker run -d --name grafana --network lab06-monitoring \
+            -e GF_SECURITY_ADMIN_USER=admin \
+            -e GF_SECURITY_ADMIN_PASSWORD=admin \
+            -v "${HOST_LAB06_DIR}/grafana/provisioning:/etc/grafana/provisioning:ro" \
+            public.ecr.aws/ubuntu/grafana:latest
+
           sleep 8
         '''
       }
@@ -33,9 +54,9 @@ pipeline {
       steps {
         sh '''
           set -e
-          PROM_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' lab06-prometheus)
-          GRAF_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' lab06-grafana)
-          API_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' lab06-api)
+          PROM_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' prometheus)
+          GRAF_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' grafana)
+          API_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' observability-api)
 
           echo "=== 1. Generating Traffic on Instrumented API ==="
           curl -sf "http://${API_IP}:8080/health"
@@ -55,7 +76,10 @@ pipeline {
 
   post {
     always {
-      sh 'docker compose -f "${HOST_LAB06_DIR}/docker-compose.yml" down -v || true'
+      sh '''
+        docker rm -f observability-api node-exporter prometheus grafana || true
+        docker network rm lab06-monitoring || true
+      '''
       cleanWs()
     }
   }
