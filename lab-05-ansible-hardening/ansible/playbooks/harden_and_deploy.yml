@@ -1,0 +1,84 @@
+---
+- name: Harden Linux Server and Deploy Hardened Web Service
+  hosts: web_servers
+  become: true
+  vars:
+    admin_user: devops
+    env_name: lab05-staging
+
+  tasks:
+    - name: Ensure admin group exists
+      ansible.builtin.group:
+        name: "{{ admin_user }}"
+        state: present
+
+    - name: Ensure non-root admin user exists with restricted shell
+      ansible.builtin.user:
+        name: "{{ admin_user }}"
+        group: "{{ admin_user }}"
+        shell: /bin/bash
+        create_home: true
+        state: present
+
+    - name: Install OpenSSH server and Nginx
+      ansible.builtin.apt:
+        name:
+          - openssh-server
+          - nginx
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Harden SSH daemon configuration (disable root login & password auth)
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        create: true
+        mode: "0600"
+      loop:
+        - { regexp: '^#?PermitRootLogin', line: 'PermitRootLogin no' }
+        - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no' }
+        - { regexp: '^#?X11Forwarding', line: 'X11Forwarding no' }
+
+    - name: Ensure web root directory exists
+      ansible.builtin.file:
+        path: /var/www/hardened
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: "0755"
+
+    - name: Deploy hardened index page
+      ansible.builtin.template:
+        src: /ansible/templates/index.html.j2
+        dest: /var/www/hardened/index.html
+        owner: www-data
+        group: www-data
+        mode: "0644"
+
+    - name: Remove default Nginx site
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+
+    - name: Deploy hardened Nginx virtual host
+      ansible.builtin.template:
+        src: /ansible/templates/hardened-site.conf.j2
+        dest: /etc/nginx/sites-enabled/hardened.conf
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Validate Nginx configuration syntax
+      ansible.builtin.command: nginx -t
+      changed_when: false
+
+    - name: Start or reload Nginx cleanly inside container
+      ansible.builtin.shell: |
+        if pgrep -x nginx >/dev/null; then
+          nginx -s reload
+        else
+          nginx
+        fi
+      changed_when: false

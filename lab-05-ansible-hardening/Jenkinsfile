@@ -1,0 +1,82 @@
+pipeline {
+  agent any
+
+  environment {
+    HOST_ANSIBLE_DIR = '/home/moyagoub/local-ai-devops-workstation/lab-05-ansible-hardening/ansible'
+    TARGET_CONTAINER = 'ansible-target-lab05'
+  }
+
+  stages {
+    stage('Ansible Lint & Syntax Check') {
+      steps {
+        sh '''
+          set -e
+          docker run --rm \
+            -v "${HOST_ANSIBLE_DIR}:/ansible:ro" \
+            local-ansible-runner:latest \
+            sh -c "ansible-lint /ansible/playbooks/harden_and_deploy.yml && ansible-playbook --syntax-check /ansible/playbooks/harden_and_deploy.yml"
+        '''
+      }
+    }
+
+    stage('Start Ephemeral Ubuntu Target Server') {
+      steps {
+        sh '''
+          set -e
+          docker rm -f "${TARGET_CONTAINER}" || true
+          docker run -d --name "${TARGET_CONTAINER}" \
+            public.ecr.aws/docker/library/ubuntu:24.04 \
+            sleep infinity
+        '''
+      }
+    }
+
+    stage('Run Hardening Playbook & Verify Idempotency') {
+      steps {
+        sh '''
+          set -e
+          echo "=== First Run: Applying Hardening & Nginx Configuration ==="
+          docker run --rm \
+            -v "${HOST_ANSIBLE_DIR}:/ansible:ro" \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            local-ansible-runner:latest \
+            ansible-playbook /ansible/playbooks/harden_and_deploy.yml
+
+          echo "=== Second Run: Asserting Idempotency (changed=0) ==="
+          IDEMPOTENCY_OUT=$(docker run --rm \
+            -v "${HOST_ANSIBLE_DIR}:/ansible:ro" \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            local-ansible-runner:latest \
+            ansible-playbook /ansible/playbooks/harden_and_deploy.yml)
+          echo "$IDEMPOTENCY_OUT"
+          echo "$IDEMPOTENCY_OUT" | grep -q "changed=0"
+        '''
+      }
+    }
+
+    stage('Verify Security Headers & Hardened Config') {
+      steps {
+        sh '''
+          set -e
+          TARGET_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${TARGET_CONTAINER}")
+          echo "=== Checking Security Headers on http://${TARGET_IP}:8085 ==="
+          HEADERS=$(curl -sI "http://${TARGET_IP}:8085")
+          echo "$HEADERS"
+          echo "$HEADERS" | grep -qi "X-Frame-Options: DENY"
+          echo "$HEADERS" | grep -qi "X-Content-Type-Options: nosniff"
+
+          echo "=== Verifying SSH Hardening & Non-Root User ==="
+          docker exec "${TARGET_CONTAINER}" grep -q "PermitRootLogin no" /etc/ssh/sshd_config
+          docker exec "${TARGET_CONTAINER}" id devops
+        '''
+      }
+    }
+  }
+
+  post {
+    always {
+      sh 'docker rm -f "${TARGET_CONTAINER}" || true'
+      cleanWs()
+    }
+  }
+}
