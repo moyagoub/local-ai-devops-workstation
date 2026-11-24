@@ -2,8 +2,9 @@ jenkins/jenkins.war
 *.tfstate
 *.tfstate.*
 .terraform/
+*.tfplan
+tfplan
 generated-*.json
 __pycache__/
 *.pyc
 .DS_Store
-tfplan
