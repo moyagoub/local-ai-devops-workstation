@@ -22,8 +22,12 @@ pipeline {
       steps {
         sh '''
           set -e
-          docker rm -f lab06-api lab06-node-exporter lab06-prometheus lab06-grafana || true
-          docker network create lab06-monitoring || true
+          docker network disconnect lab06-monitoring jenkins-local || true
+          docker rm -f observability-api node-exporter prometheus grafana || true
+          docker network rm lab06-monitoring || true
+
+          docker network create lab06-monitoring
+          docker network connect lab06-monitoring jenkins-local
 
           # 1. Build & start instrumented Flask API
           docker build -t lab06-observability-api:local "${WORKSPACE}/lab-06-prometheus-grafana/app"
@@ -54,21 +58,19 @@ pipeline {
       steps {
         sh '''
           set -e
-          PROM_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' prometheus)
-          GRAF_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' grafana)
-          API_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' observability-api)
-
-          echo "=== 1. Generating Traffic on Instrumented API ==="
-          curl -sf "http://${API_IP}:8080/health"
-          curl -sf "http://${API_IP}:8080/metrics"
+          echo "=== 1. Generating Traffic & Reading Metrics on Instrumented API ==="
+          curl -sf "http://observability-api:8080/health"
+          curl -sf "http://observability-api:8080/metrics"
 
           echo "=== 2. Verifying Prometheus Active Scrape Targets ==="
-          TARGETS=$(curl -sf "http://${PROM_IP}:9090/api/v1/targets")
+          TARGETS=$(curl -sf "http://prometheus:9090/api/v1/targets")
           echo "$TARGETS" | grep -q '"health":"up"'
+          echo "Prometheus targets verified UP!"
 
           echo "=== 3. Verifying Grafana Health & Provisioned Datasource ==="
-          curl -sf "http://${GRAF_IP}:3000/api/health"
-          curl -sf -u admin:admin "http://${GRAF_IP}:3000/api/datasources" | grep -q "Prometheus"
+          curl -sf "http://grafana:3000/api/health"
+          curl -sf -u admin:admin "http://grafana:3000/api/datasources" | grep -q "Prometheus"
+          echo "Grafana Prometheus datasource verified!"
         '''
       }
     }
@@ -77,6 +79,7 @@ pipeline {
   post {
     always {
       sh '''
+        docker network disconnect lab06-monitoring jenkins-local || true
         docker rm -f observability-api node-exporter prometheus grafana || true
         docker network rm lab06-monitoring || true
       '''
