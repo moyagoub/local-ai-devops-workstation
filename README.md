@@ -122,5 +122,7 @@ docker exec jenkins-local git config --global --add safe.directory /workspace/lo
 docker exec jenkins-local cat /var/jenkins_home/secrets/initialAdminPassword
 ```
 
+- **Offline Terraform Provider Cache:** Pre-populates `~/.terraform.d/plugin-cache` via `TF_PLUGIN_CACHE_DIR` so `terraform init` runs offline in < 1 second.
+
 ## License
 MIT License
