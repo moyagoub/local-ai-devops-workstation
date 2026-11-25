@@ -54,7 +54,7 @@ pipeline {
           done
 
           # 2. Export bare Git repo inside K3s node and serve over HTTP on port 8000
-          docker exec "${K3S_NAME}" sh -c "apt-get update -qq && apt-get install -y -qq git python3 && git -c safe.directory=/src clone --bare /src /srv/repo.git && git --git-dir=/srv/repo.git update-server-info"
+          docker exec "${K3S_NAME}" sh -c "apt-get update -qq && apt-get install -y -qq git python3 && git config --global --add safe.directory '*' && git clone --bare /src /srv/repo.git && git --git-dir=/srv/repo.git update-server-info"
           docker exec -d "${K3S_NAME}" python3 -m http.server 8000 -d /srv
 
           # 3. Side-load cached single-arch images into K3s containerd
