@@ -55,7 +55,8 @@ pipeline {
 
           # 2. Export bare Git repo inside K3s node and serve over HTTP on port 8000
           docker exec "${K3S_NAME}" sh -c "apt-get update -qq && apt-get install -y -qq git python3 && git config --global --add safe.directory '*' && git clone --bare /src /srv/repo.git && git --git-dir=/srv/repo.git update-server-info"
-          docker exec -d "${K3S_NAME}" python3 -m http.server 8000 -d /srv
+          docker exec "${K3S_NAME}" sh -c "mkdir -p /srv/cgi-bin && printf '#!/bin/sh\nexport GIT_PROJECT_ROOT=/srv\nexport GIT_HTTP_EXPORT_ALL=1\nexec /usr/lib/git-core/git-http-backend\n' > /srv/cgi-bin/git && chmod +x /srv/cgi-bin/git"
+          docker exec -d "${K3S_NAME}" python3 -m http.server --cgi 8000 -d /srv
 
           # 3. Side-load cached single-arch images into K3s containerd
           for img in devops-gitops-api:v1.0.0 local-argocd:v2.13.2 local-redis:7.2-alpine registry.k8s.io/coredns/coredns:v1.11.3; do
@@ -87,8 +88,8 @@ pipeline {
           KUBECONFIG="/tmp/lab07-kubeconfig"
           K3S_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${K3S_NAME}")
 
-          echo "=== 1. Applying ArgoCD Application CRD (http://${K3S_IP}:8000/repo.git) ==="
-          sed "s|repoURL:.*|repoURL: http://${K3S_IP}:8000/repo.git|g" \
+          echo "=== 1. Applying ArgoCD Application CRD (http://${K3S_IP}:8000/cgi-bin/git/repo.git) ==="
+          sed "s|repoURL:.*|repoURL: http://${K3S_IP}:8000/cgi-bin/git/repo.git|g" \
             "${WORKSPACE}/lab-07-gitops-argocd-k3s/argocd/application.yaml" \
             | kubectl --kubeconfig="${KUBECONFIG}" apply -f -
 
