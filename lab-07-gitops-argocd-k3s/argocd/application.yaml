@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: devops-gitops-api
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: file:///workspace/local-ai-devops-workstation
+    targetRevision: HEAD
+    path: lab-07-gitops-argocd-k3s/apps/devops-gitops-api
+  destination:
+    server: https://default.svc
+    namespace: gitops-prod
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
