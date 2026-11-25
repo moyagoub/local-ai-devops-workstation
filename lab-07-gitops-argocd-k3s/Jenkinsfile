@@ -58,9 +58,7 @@ pipeline {
           kubectl --kubeconfig="${KUBECONFIG}" create namespace argocd
           ARGO_HOST="raw.githubusercontent.com"
           ARGO_PATH="argoproj/argo-cd/v2.13.2/manifests/install.yaml"
-          curl -fsSL "https://${ARGO_HOST}/${ARGO_PATH}" \
-
-            | sed 's|redis:7.0.15-alpine|public.ecr.aws/docker/library/redis:7.2-alpine|g' \
+          curl -fsSL "https://${ARGO_HOST}/${ARGO_PATH}" | sed 's|redis:7.0.15-alpine|public.ecr.aws/docker/library/redis:7.2-alpine|g' \
             | kubectl --kubeconfig="${KUBECONFIG}" apply -n argocd -f -
 
           # Wait for core ArgoCD repo-server & application-controller deployments
