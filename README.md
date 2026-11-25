@@ -4,6 +4,9 @@ A production-style, **100% local AI-assisted DevOps, Cloud & SRE engineering wor
 
 This repository provides tested configurations, Dockerfiles, and CI/CD labs to run local LLMs on an NVIDIA GPU alongside **VS Code**, **Continue**, **Docker**, **Terraform**, **Kubernetes (K3s)**, **Ansible**, **Prometheus**, **Grafana**, **Trivy**, **LocalStack (AWS)**, **Azurite (Azure)**, and a containerized **Jenkins** controller—with zero cloud API costs and zero Docker Hub (`docker.io`) CDN dependency.
 
+
+> **New to this setup?** Follow the step-by-step **[Beginner Replication Guide](docs/BEGINNER_GUIDE.md)** to replicate the entire workstation and all 6 labs from scratch.
+
 ## Architecture Overview
 
 ```mermaid
