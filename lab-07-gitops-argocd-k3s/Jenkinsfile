@@ -34,14 +34,18 @@ pipeline {
 
           docker rm -f "${K3S_NAME}" "${GIT_SRV}" || true
 
-          # 1. Start lightweight local Git daemon serving the repository on port 9418
+          # 1. Serve bare Git repository over standard HTTP (port 8000) for ArgoCD
           docker run -d --name "${GIT_SRV}" \
-            -v "${REPO_ROOT}:/srv/git/local-ai-devops-workstation:ro" \
-            local-jenkins-docker:lts \
-            git daemon --reuseaddr --base-path=/srv/git --export-all --enable=receive-pack /srv/git
+            -v "${REPO_ROOT}:/src:ro" \
+            public.ecr.aws/docker/library/python:3.12-slim \
+            sh -c "apt-get update && apt-get install -y -qq git && git clone --bare /src /srv/repo.git && git --git-dir=/srv/repo.git update-server-info && python3 -m http.server 8000 -d /srv"
 
+          for i in $(seq 1 20); do
+            if docker exec "${GIT_SRV}" test -f /srv/repo.git/info/refs; then break; fi
+            sleep 1
+          done
           GIT_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${GIT_SRV}")
-          echo "Local Git Server listening at git://${GIT_IP}:9418/local-ai-devops-workstation"
+          echo "Local Git HTTP Server listening at http://${GIT_IP}:8000/repo.git"
 
           # 2. Boot K3s node
           docker run -d --name "${K3S_NAME}" --privileged \
@@ -94,7 +98,7 @@ pipeline {
           GIT_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${GIT_SRV}")
 
           echo "=== 1. Applying ArgoCD Application CRD Pointing to Local Git Server ==="
-          sed "s|repoURL:.*|repoURL: git://${GIT_IP}:9418/local-ai-devops-workstation|g" \
+          sed "s|repoURL:.*|repoURL: http://${GIT_IP}:8000/repo.git|g" \
             "${WORKSPACE}/lab-07-gitops-argocd-k3s/argocd/application.yaml" \
             | kubectl --kubeconfig="${KUBECONFIG}" apply -f -
 
@@ -102,7 +106,7 @@ pipeline {
           for i in $(seq 1 25); do
             SYNC_STATUS=$(kubectl --kubeconfig="${KUBECONFIG}" -n argocd get application devops-gitops-api -o jsonpath='{.status.sync.status}' 2>/dev/null || echo "")
             HEALTH_STATUS=$(kubectl --kubeconfig="${KUBECONFIG}" -n argocd get application devops-gitops-api -o jsonpath='{.status.health.status}' 2>/dev/null || echo "")
-            echo "Attempt ${i}: Sync=${SYNC_STATUS}, Health=${HEALTH_STATUS}"
+            echo "Attempt ${i}: Sync=${SYNC_STATUS}, Health=${HEALTH_STATUS}"; if [ "${i}" = "5" ] && [ "${SYNC_STATUS}" != "Synced" ]; then kubectl --kubeconfig="${KUBECONFIG}" -n argocd get application devops-gitops-api -o jsonpath='{.status.conditions}'; echo ""; fi
             if [ "${SYNC_STATUS}" = "Synced" ] && [ "${HEALTH_STATUS}" = "Healthy" ]; then
               break
             fi
