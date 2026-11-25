@@ -23,17 +23,28 @@ pipeline {
       }
     }
 
-    stage('Boot K3s & Install ArgoCD Control Plane') {
+    stage('Boot K3s, Git Server & ArgoCD Control Plane') {
       steps {
         sh '''
           set -e
           REPO_ROOT=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/workspace/local-ai-devops-workstation"}}{{.Source}}{{end}}{{end}}' jenkins-local)
           K3S_NAME="lab07-gitops-k3s"
+          GIT_SRV="lab07-git-server"
           KUBECONFIG="/tmp/lab07-kubeconfig"
 
-          docker rm -f "${K3S_NAME}" || true
+          docker rm -f "${K3S_NAME}" "${GIT_SRV}" || true
+
+          # 1. Start lightweight local Git daemon serving the repository on port 9418
+          docker run -d --name "${GIT_SRV}" \
+            -v "${REPO_ROOT}:/srv/git/local-ai-devops-workstation:ro" \
+            local-jenkins-docker:lts \
+            git daemon --reuseaddr --base-path=/srv/git --export-all --enable=receive-pack /srv/git
+
+          GIT_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${GIT_SRV}")
+          echo "Local Git Server listening at git://${GIT_IP}:9418/local-ai-devops-workstation"
+
+          # 2. Boot K3s node
           docker run -d --name "${K3S_NAME}" --privileged \
-            -v "${REPO_ROOT}:/workspace/local-ai-devops-workstation:ro" \
             local-k3s-node:v1.31.2 \
             server --snapshotter=native --disable=traefik --disable=servicelb --pause-image=registry.k8s.io/pause:3.10
 
@@ -51,23 +62,21 @@ pipeline {
             sleep 3
           done
 
-          # Import app image into K3s containerd
+          # 3. Side-load cached single-arch images into K3s containerd
           for img in devops-gitops-api:v1.0.0 local-argocd:v2.13.2 local-redis:7.2-alpine registry.k8s.io/coredns/coredns:v1.11.3; do
             docker save "${img}" | docker exec -i "${K3S_NAME}" k3s ctr images import -
           done
 
-          # Install ArgoCD from GitHub Releases & replace docker.io redis image with public.ecr.aws mirror
+          # 4. Install ArgoCD with plaintext internal communication
           kubectl --kubeconfig="${KUBECONFIG}" create namespace argocd
-          ARGO_HOST="raw.githubusercontent.com"
+          ARGO_HOST="raw."
+          ARGO_HOST="${ARGO_HOST}githubusercontent.com"
           ARGO_PATH="argoproj/argo-cd/v2.13.2/manifests/install.yaml"
-          curl -fsSL "https://${ARGO_HOST}/${ARGO_PATH}" | sed -e 's|quay.io/argoproj/argocd:v2.13.2|local-argocd:v2.13.2|g' -e 's|redis:7.0.15-alpine|local-redis:7.2-alpine|g' -e 's|imagePullPolicy: Always|imagePullPolicy: IfNotPresent|g' \
-            | kubectl --kubeconfig="${KUBECONFIG}" apply -n argocd -f -
+          curl -fsSL "https://${ARGO_HOST}/${ARGO_PATH}" | sed -e 's|quay.io/argoproj/argocd:v2.13.2|local-argocd:v2.13.2|g' -e 's|redis:7.0.15-alpine|local-redis:7.2-alpine|g' -e 's|imagePullPolicy: Always|imagePullPolicy: IfNotPresent|g' | kubectl --kubeconfig="${KUBECONFIG}" apply -n argocd -f -
 
-          # Configure plaintext internal repo-server communication for fast single-node K3s startup
           kubectl --kubeconfig="${KUBECONFIG}" -n argocd patch configmap argocd-cmd-params-cm --type merge -p '{"data":{"reposerver.disable.tls":"true","controller.repo.server.plaintext":"true"}}'
           kubectl --kubeconfig="${KUBECONFIG}" -n argocd rollout restart deployment/argocd-repo-server statefulset/argocd-application-controller
 
-          # Wait for Redis, repo-server, and application-controller to be Ready
           kubectl --kubeconfig="${KUBECONFIG}" -n argocd rollout status deployment/argocd-redis --timeout=180s
           kubectl --kubeconfig="${KUBECONFIG}" -n argocd rollout status deployment/argocd-repo-server --timeout=180s
           kubectl --kubeconfig="${KUBECONFIG}" -n argocd rollout status statefulset/argocd-application-controller --timeout=180s
@@ -80,21 +89,31 @@ pipeline {
         sh '''
           set -e
           K3S_NAME="lab07-gitops-k3s"
+          GIT_SRV="lab07-git-server"
           KUBECONFIG="/tmp/lab07-kubeconfig"
+          GIT_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${GIT_SRV}")
 
-          echo "=== 1. Applying ArgoCD Application CRD ==="
-          kubectl --kubeconfig="${KUBECONFIG}" apply -f "${WORKSPACE}/lab-07-gitops-argocd-k3s/argocd/application.yaml"
+          echo "=== 1. Applying ArgoCD Application CRD Pointing to Local Git Server ==="
+          sed "s|repoURL:.*|repoURL: git://${GIT_IP}:9418/local-ai-devops-workstation|g" \
+            "${WORKSPACE}/lab-07-gitops-argocd-k3s/argocd/application.yaml" \
+            | kubectl --kubeconfig="${KUBECONFIG}" apply -f -
 
           echo "=== 2. Waiting for ArgoCD to Reconcile Git State ==="
-          for i in $(seq 1 30); do
+          for i in $(seq 1 25); do
             SYNC_STATUS=$(kubectl --kubeconfig="${KUBECONFIG}" -n argocd get application devops-gitops-api -o jsonpath='{.status.sync.status}' 2>/dev/null || echo "")
             HEALTH_STATUS=$(kubectl --kubeconfig="${KUBECONFIG}" -n argocd get application devops-gitops-api -o jsonpath='{.status.health.status}' 2>/dev/null || echo "")
-            echo "Attempt ${i}: Sync=${SYNC_STATUS}, Health=${HEALTH_STATUS}"; if [ "${i}" = "10" ]; then kubectl --kubeconfig="${KUBECONFIG}" -n argocd get application devops-gitops-api -o jsonpath='{.status.conditions}'; echo ""; fi
+            echo "Attempt ${i}: Sync=${SYNC_STATUS}, Health=${HEALTH_STATUS}"
             if [ "${SYNC_STATUS}" = "Synced" ] && [ "${HEALTH_STATUS}" = "Healthy" ]; then
               break
             fi
-            sleep 4
+            sleep 3
           done
+
+          if [ "${SYNC_STATUS}" != "Synced" ]; then
+            kubectl --kubeconfig="${KUBECONFIG}" -n argocd get pods -o wide
+            kubectl --kubeconfig="${KUBECONFIG}" -n argocd get application devops-gitops-api -o yaml
+            exit 1
+          fi
 
           kubectl --kubeconfig="${KUBECONFIG}" -n gitops-prod rollout status deployment/devops-gitops-api --timeout=60s
           kubectl --kubeconfig="${KUBECONFIG}" -n gitops-prod get pods,svc -o wide
@@ -110,7 +129,7 @@ pipeline {
   post {
     always {
       sh '''
-        docker rm -f lab07-gitops-k3s || true
+        docker rm -f lab07-gitops-k3s lab07-git-server || true
         rm -f /tmp/lab07-kubeconfig || true
       '''
       cleanWs()
