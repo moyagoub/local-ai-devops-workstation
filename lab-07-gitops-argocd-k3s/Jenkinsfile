@@ -35,7 +35,7 @@ pipeline {
           docker rm -f "${K3S_NAME}" "${GIT_SRV}" || true
 
           # 1. Serve bare Git repository over standard HTTP (port 8000) for ArgoCD
-          docker run -d --name "${GIT_SRV}" \
+          docker run -d -u root --name "${GIT_SRV}" \
             -v "${REPO_ROOT}:/src:ro" \
             local-jenkins-docker:lts \
             sh -c "git clone --bare /src /srv/repo.git && git --git-dir=/srv/repo.git update-server-info && python3 -m http.server 8000 -d /srv"
