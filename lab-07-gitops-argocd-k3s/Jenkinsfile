@@ -56,7 +56,7 @@ pipeline {
 
           # Install ArgoCD from GitHub Releases & replace docker.io redis image with public.ecr.aws mirror
           kubectl --kubeconfig="${KUBECONFIG}" create namespace argocd
-          ARGO_HOST="://githubusercontent.com"
+          ARGO_HOST="raw.githubusercontent.com"
           ARGO_PATH="argoproj/argo-cd/v2.13.2/manifests/install.yaml"
           curl -fsSL "https://${ARGO_HOST}/${ARGO_PATH}" \
 
