@@ -6,7 +6,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: file:///workspace/local-ai-devops-workstation
+    repoURL: https://github.com/moyagoub/local-ai-devops-workstation.git
     targetRevision: HEAD
     path: lab-07-gitops-argocd-k3s/apps/devops-gitops-api
   destination:

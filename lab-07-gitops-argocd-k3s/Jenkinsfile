@@ -35,7 +35,7 @@ pipeline {
           docker run -d --name "${K3S_NAME}" --privileged \
             -v "${REPO_ROOT}:/workspace/local-ai-devops-workstation:ro" \
             local-k3s-node:v1.31.2 \
-            server --snapshotter=native --disable=traefik --disable=servicelb --disable=coredns --pause-image=registry.k8s.io/pause:3.10
+            server --snapshotter=native --disable=traefik --disable=servicelb --pause-image=registry.k8s.io/pause:3.10
 
           for i in $(seq 1 20); do
             if docker exec "${K3S_NAME}" test -f /etc/rancher/k3s/k3s.yaml; then break; fi
@@ -52,7 +52,7 @@ pipeline {
           done
 
           # Import app image into K3s containerd
-          for img in devops-gitops-api:v1.0.0 local-argocd:v2.13.2 local-redis:7.2-alpine; do
+          for img in devops-gitops-api:v1.0.0 local-argocd:v2.13.2 local-redis:7.2-alpine registry.k8s.io/coredns/coredns:v1.11.3; do
             docker save "${img}" | docker exec -i "${K3S_NAME}" k3s ctr images import -
           done
 
