@@ -52,15 +52,15 @@ pipeline {
           done
 
           # Import app image into K3s containerd
-          for img in devops-gitops-api:v1.0.0 quay.io/argoproj/argocd:v2.13.2 public.ecr.aws/docker/library/redis:7.2-alpine; do
-            docker save "${img}" | docker exec -i "${K3S_NAME}" k3s ctr images import --all-platforms -
+          for img in devops-gitops-api:v1.0.0 local-argocd:v2.13.2 local-redis:7.2-alpine; do
+            docker save "${img}" | docker exec -i "${K3S_NAME}" k3s ctr images import -
           done
 
           # Install ArgoCD from GitHub Releases & replace docker.io redis image with public.ecr.aws mirror
           kubectl --kubeconfig="${KUBECONFIG}" create namespace argocd
           ARGO_HOST="raw.githubusercontent.com"
           ARGO_PATH="argoproj/argo-cd/v2.13.2/manifests/install.yaml"
-          curl -fsSL "https://${ARGO_HOST}/${ARGO_PATH}" | sed 's|redis:7.0.15-alpine|public.ecr.aws/docker/library/redis:7.2-alpine|g' \
+          curl -fsSL "https://${ARGO_HOST}/${ARGO_PATH}" | sed -e 's|quay.io/argoproj/argocd:v2.13.2|local-argocd:v2.13.2|g' -e 's|redis:7.0.15-alpine|local-redis:7.2-alpine|g' -e 's|imagePullPolicy: Always|imagePullPolicy: IfNotPresent|g' \
             | kubectl --kubeconfig="${KUBECONFIG}" apply -n argocd -f -
 
           # Wait for core ArgoCD repo-server & application-controller deployments
