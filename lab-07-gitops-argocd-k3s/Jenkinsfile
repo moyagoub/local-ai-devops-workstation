@@ -38,7 +38,7 @@ pipeline {
           docker run -d -u root --name "${GIT_SRV}" \
             -v "${REPO_ROOT}:/src:ro" \
             local-jenkins-docker:lts \
-            sh -c "git clone --bare /src /srv/repo.git && git --git-dir=/srv/repo.git update-server-info && python3 -m http.server 8000 -d /srv"
+            sh -c "git -c safe.directory=/src clone --bare /src /srv/repo.git && git --git-dir=/srv/repo.git update-server-info && python3 -m http.server 8000 -d /srv"
 
           for i in $(seq 1 20); do
             if docker exec "${GIT_SRV}" test -f /srv/repo.git/info/refs; then break; fi
