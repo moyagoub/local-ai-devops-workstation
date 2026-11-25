@@ -10,7 +10,7 @@ spec:
     targetRevision: HEAD
     path: lab-07-gitops-argocd-k3s/apps/devops-gitops-api
   destination:
-    server: https://default.svc
+    server: https://kubernetes.default.svc
     namespace: gitops-prod
   syncPolicy:
     automated:
