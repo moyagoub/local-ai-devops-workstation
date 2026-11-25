@@ -63,7 +63,12 @@ pipeline {
           curl -fsSL "https://${ARGO_HOST}/${ARGO_PATH}" | sed -e 's|quay.io/argoproj/argocd:v2.13.2|local-argocd:v2.13.2|g' -e 's|redis:7.0.15-alpine|local-redis:7.2-alpine|g' -e 's|imagePullPolicy: Always|imagePullPolicy: IfNotPresent|g' \
             | kubectl --kubeconfig="${KUBECONFIG}" apply -n argocd -f -
 
-          # Wait for core ArgoCD repo-server & application-controller deployments
+          # Configure plaintext internal repo-server communication for fast single-node K3s startup
+          kubectl --kubeconfig="${KUBECONFIG}" -n argocd patch configmap argocd-cmd-params-cm --type merge -p '{"data":{"reposerver.disable.tls":"true","controller.repo.server.plaintext":"true"}}'
+          kubectl --kubeconfig="${KUBECONFIG}" -n argocd rollout restart deployment/argocd-repo-server statefulset/argocd-application-controller
+
+          # Wait for Redis, repo-server, and application-controller to be Ready
+          kubectl --kubeconfig="${KUBECONFIG}" -n argocd rollout status deployment/argocd-redis --timeout=180s
           kubectl --kubeconfig="${KUBECONFIG}" -n argocd rollout status deployment/argocd-repo-server --timeout=180s
           kubectl --kubeconfig="${KUBECONFIG}" -n argocd rollout status statefulset/argocd-application-controller --timeout=180s
         '''
@@ -84,7 +89,7 @@ pipeline {
           for i in $(seq 1 30); do
             SYNC_STATUS=$(kubectl --kubeconfig="${KUBECONFIG}" -n argocd get application devops-gitops-api -o jsonpath='{.status.sync.status}' 2>/dev/null || echo "")
             HEALTH_STATUS=$(kubectl --kubeconfig="${KUBECONFIG}" -n argocd get application devops-gitops-api -o jsonpath='{.status.health.status}' 2>/dev/null || echo "")
-            echo "Attempt ${i}: Sync=${SYNC_STATUS}, Health=${HEALTH_STATUS}"
+            echo "Attempt ${i}: Sync=${SYNC_STATUS}, Health=${HEALTH_STATUS}"; if [ "${i}" = "10" ]; then kubectl --kubeconfig="${KUBECONFIG}" -n argocd get application devops-gitops-api -o jsonpath='{.status.conditions}'; echo ""; fi
             if [ "${SYNC_STATUS}" = "Synced" ] && [ "${HEALTH_STATUS}" = "Healthy" ]; then
               break
             fi
