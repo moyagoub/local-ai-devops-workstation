@@ -23,32 +23,19 @@ pipeline {
       }
     }
 
-    stage('Boot K3s, Git Server & ArgoCD Control Plane') {
+    stage('Boot K3s & Install ArgoCD Control Plane') {
       steps {
         sh '''
           set -e
           REPO_ROOT=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/workspace/local-ai-devops-workstation"}}{{.Source}}{{end}}{{end}}' jenkins-local)
           K3S_NAME="lab07-gitops-k3s"
-          GIT_SRV="lab07-git-server"
           KUBECONFIG="/tmp/lab07-kubeconfig"
 
-          docker rm -f "${K3S_NAME}" "${GIT_SRV}" || true
+          docker rm -f "${K3S_NAME}" || true
 
-          # 1. Serve bare Git repository over standard HTTP (port 8000) for ArgoCD
-          docker run -d -u root --name "${GIT_SRV}" \
-            -v "${REPO_ROOT}:/src:ro" \
-            local-jenkins-docker:lts \
-            sh -c "git -c safe.directory=/src clone --bare /src /srv/repo.git && git --git-dir=/srv/repo.git update-server-info && python3 -m http.server 8000 -d /srv"
-
-          for i in $(seq 1 20); do
-            if docker exec "${GIT_SRV}" test -f /srv/repo.git/info/refs; then break; fi
-            sleep 1
-          done
-          GIT_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${GIT_SRV}")
-          echo "Local Git HTTP Server listening at http://${GIT_IP}:8000/repo.git"
-
-          # 2. Boot K3s node
+          # 1. Boot K3s node with repo mounted read-only
           docker run -d --name "${K3S_NAME}" --privileged \
+            -v "${REPO_ROOT}:/src:ro" \
             local-k3s-node:v1.31.2 \
             server --snapshotter=native --disable=traefik --disable=servicelb --pause-image=registry.k8s.io/pause:3.10
 
@@ -65,6 +52,10 @@ pipeline {
             if kubectl --kubeconfig="${KUBECONFIG}" get nodes | grep -q " Ready"; then break; fi
             sleep 3
           done
+
+          # 2. Export bare Git repo inside K3s node and serve over HTTP on port 8000
+          docker exec "${K3S_NAME}" sh -c "apt-get update -qq && apt-get install -y -qq git python3 && git -c safe.directory=/src clone --bare /src /srv/repo.git && git --git-dir=/srv/repo.git update-server-info"
+          docker exec -d "${K3S_NAME}" python3 -m http.server 8000 -d /srv
 
           # 3. Side-load cached single-arch images into K3s containerd
           for img in devops-gitops-api:v1.0.0 local-argocd:v2.13.2 local-redis:7.2-alpine registry.k8s.io/coredns/coredns:v1.11.3; do
@@ -93,12 +84,11 @@ pipeline {
         sh '''
           set -e
           K3S_NAME="lab07-gitops-k3s"
-          GIT_SRV="lab07-git-server"
           KUBECONFIG="/tmp/lab07-kubeconfig"
-          GIT_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${GIT_SRV}")
+          K3S_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${K3S_NAME}")
 
-          echo "=== 1. Applying ArgoCD Application CRD Pointing to Local Git Server ==="
-          sed "s|repoURL:.*|repoURL: http://${GIT_IP}:8000/repo.git|g" \
+          echo "=== 1. Applying ArgoCD Application CRD (http://${K3S_IP}:8000/repo.git) ==="
+          sed "s|repoURL:.*|repoURL: http://${K3S_IP}:8000/repo.git|g" \
             "${WORKSPACE}/lab-07-gitops-argocd-k3s/argocd/application.yaml" \
             | kubectl --kubeconfig="${KUBECONFIG}" apply -f -
 
@@ -106,7 +96,7 @@ pipeline {
           for i in $(seq 1 25); do
             SYNC_STATUS=$(kubectl --kubeconfig="${KUBECONFIG}" -n argocd get application devops-gitops-api -o jsonpath='{.status.sync.status}' 2>/dev/null || echo "")
             HEALTH_STATUS=$(kubectl --kubeconfig="${KUBECONFIG}" -n argocd get application devops-gitops-api -o jsonpath='{.status.health.status}' 2>/dev/null || echo "")
-            echo "Attempt ${i}: Sync=${SYNC_STATUS}, Health=${HEALTH_STATUS}"; if [ "${i}" = "5" ] && [ "${SYNC_STATUS}" != "Synced" ]; then kubectl --kubeconfig="${KUBECONFIG}" -n argocd get application devops-gitops-api -o jsonpath='{.status.conditions}'; echo ""; fi
+            echo "Attempt ${i}: Sync=${SYNC_STATUS}, Health=${HEALTH_STATUS}"
             if [ "${SYNC_STATUS}" = "Synced" ] && [ "${HEALTH_STATUS}" = "Healthy" ]; then
               break
             fi
@@ -114,7 +104,6 @@ pipeline {
           done
 
           if [ "${SYNC_STATUS}" != "Synced" ]; then
-            kubectl --kubeconfig="${KUBECONFIG}" -n argocd get pods -o wide
             kubectl --kubeconfig="${KUBECONFIG}" -n argocd get application devops-gitops-api -o yaml
             exit 1
           fi
@@ -133,7 +122,7 @@ pipeline {
   post {
     always {
       sh '''
-        docker rm -f lab07-gitops-k3s lab07-git-server || true
+        docker rm -f lab07-gitops-k3s || true
         rm -f /tmp/lab07-kubeconfig || true
       '''
       cleanWs()
