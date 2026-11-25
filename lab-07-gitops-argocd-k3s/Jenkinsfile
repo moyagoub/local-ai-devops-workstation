@@ -55,8 +55,7 @@ pipeline {
 
           # 2. Export bare Git repo inside K3s node and serve over HTTP on port 8000
           docker exec "${K3S_NAME}" sh -c "apt-get update -qq && apt-get install -y -qq git python3 && git config --global --add safe.directory '*' && git clone --bare /src /srv/repo.git && git --git-dir=/srv/repo.git update-server-info"
-          docker exec "${K3S_NAME}" sh -c "mkdir -p /srv/cgi-bin && printf '#!/bin/sh\nexport GIT_PROJECT_ROOT=/srv\nexport GIT_HTTP_EXPORT_ALL=1\nexec /usr/lib/git-core/git-http-backend\n' > /srv/cgi-bin/git && chmod +x /srv/cgi-bin/git"
-          docker exec -d "${K3S_NAME}" python3 -m http.server --cgi 8000 -d /srv
+# Bare repo ready at /srv/repo.git on K3s node
 
           # 3. Side-load cached single-arch images into K3s containerd
           for img in devops-gitops-api:v1.0.0 local-argocd:v2.13.2 local-redis:7.2-alpine registry.k8s.io/coredns/coredns:v1.11.3; do
@@ -71,6 +70,7 @@ pipeline {
           curl -fsSL "https://${ARGO_HOST}/${ARGO_PATH}" | sed -e 's|quay.io/argoproj/argocd:v2.13.2|local-argocd:v2.13.2|g' -e 's|redis:7.0.15-alpine|local-redis:7.2-alpine|g' -e 's|imagePullPolicy: Always|imagePullPolicy: IfNotPresent|g' | kubectl --kubeconfig="${KUBECONFIG}" apply -n argocd -f -
 
           kubectl --kubeconfig="${KUBECONFIG}" -n argocd patch configmap argocd-cmd-params-cm --type merge -p '{"data":{"reposerver.disable.tls":"true","controller.repo.server.plaintext":"true"}}'
+          kubectl --kubeconfig="${KUBECONFIG}" -n argocd patch deployment argocd-repo-server --type json -p '[{"op":"add","path":"/spec/template/spec/volumes/-","value":{"name":"local-git","hostPath":{"path":"/srv/repo.git","type":"Directory"}}},{"op":"add","path":"/spec/template/spec/containers/0/volumeMounts/-","value":{"name":"local-git","mountPath":"/srv/repo.git","readOnly":true}}]'
           kubectl --kubeconfig="${KUBECONFIG}" -n argocd rollout restart deployment/argocd-repo-server statefulset/argocd-application-controller
 
           kubectl --kubeconfig="${KUBECONFIG}" -n argocd rollout status deployment/argocd-redis --timeout=180s
@@ -88,8 +88,8 @@ pipeline {
           KUBECONFIG="/tmp/lab07-kubeconfig"
           K3S_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${K3S_NAME}")
 
-          echo "=== 1. Applying ArgoCD Application CRD (http://${K3S_IP}:8000/cgi-bin/git/repo.git) ==="
-          sed "s|repoURL:.*|repoURL: http://${K3S_IP}:8000/cgi-bin/git/repo.git|g" \
+          echo "=== 1. Applying ArgoCD Application CRD (file:///srv/repo.git) ==="
+          sed "s|repoURL:.*|repoURL: file:///srv/repo.git|g" \
             "${WORKSPACE}/lab-07-gitops-argocd-k3s/argocd/application.yaml" \
             | kubectl --kubeconfig="${KUBECONFIG}" apply -f -
 
