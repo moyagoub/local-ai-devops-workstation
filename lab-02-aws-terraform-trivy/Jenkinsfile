@@ -49,15 +49,15 @@ pipeline {
           set -e
           REPO_ROOT=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/workspace/local-ai-devops-workstation"}}{{.Source}}{{end}}{{end}}' jenkins-local)
           docker run --rm --network lab02-net -v "${REPO_ROOT}/lab-02-aws-terraform-trivy/terraform:/infra" -w /infra \
-            public.ecr.aws/hashicorp/terraform:1.9 init -input=false
+            -v "$(dirname "${REPO_ROOT}")/.terraform.d/plugin-cache:/plugin-cache" -e TF_PLUGIN_CACHE_DIR=/plugin-cache public.ecr.aws/hashicorp/terraform:1.9 init -input=false
 
           docker run --rm --network lab02-net -v "${REPO_ROOT}/lab-02-aws-terraform-trivy/terraform:/infra" -w /infra \
-            public.ecr.aws/hashicorp/terraform:1.9 plan \
+            -v "$(dirname "${REPO_ROOT}")/.terraform.d/plugin-cache:/plugin-cache" -e TF_PLUGIN_CACHE_DIR=/plugin-cache public.ecr.aws/hashicorp/terraform:1.9 plan \
             -var="localstack_endpoint=http://localstack-lab02:4566" \
             -out=tfplan -input=false
 
           docker run --rm --network lab02-net -v "${REPO_ROOT}/lab-02-aws-terraform-trivy/terraform:/infra" -w /infra \
-            public.ecr.aws/hashicorp/terraform:1.9 apply -auto-approve tfplan
+            -v "$(dirname "${REPO_ROOT}")/.terraform.d/plugin-cache:/plugin-cache" -e TF_PLUGIN_CACHE_DIR=/plugin-cache public.ecr.aws/hashicorp/terraform:1.9 apply -auto-approve tfplan
         '''
       }
     }
