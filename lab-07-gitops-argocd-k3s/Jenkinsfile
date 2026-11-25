@@ -52,7 +52,7 @@ pipeline {
           done
 
           # Import app image into K3s containerd
-          docker save devops-gitops-api:v1.0.0 | docker exec -i "${K3S_NAME}" k3s ctr images import -
+          docker save devops-gitops-api:v1.0.0 quay.io/argoproj/argocd:v2.13.2 public.ecr.aws/docker/library/redis:7.2-alpine | docker exec -i "${K3S_NAME}" k3s ctr images import -
 
           # Install ArgoCD from GitHub Releases & replace docker.io redis image with public.ecr.aws mirror
           kubectl --kubeconfig="${KUBECONFIG}" create namespace argocd
