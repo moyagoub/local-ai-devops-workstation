@@ -280,7 +280,7 @@ For every lab below, create a **Pipeline** job in Jenkins (`http://localhost:808
 - **What It Does:**
   1. **Trivy AzureRM Security Scan:** Enforces `min_tls_version = "TLS1_2"`, `https_traffic_only_enabled = true`, private blob access, and deny-by-default network ACLs (`AZU-0011`, `AZU-0012`).
   2. **Terraform Validation:** Runs offline `init` (via `TF_PLUGIN_CACHE_DIR`), `fmt -check`, and `validate` against `hashicorp/azurerm` v4.
-  3. **Azurite & Azure CLI Integration (`://microsoft.com`):** Spins up Azurite Blob Storage on `lab04-net`, creates the `jenkins-artifacts` container, uploads `azure-build.txt`, and verifies via `az storage blob list -o table`.
+  3. **Azurite & Azure CLI Integration (`mcr.microsoft.com`):** Spins up Azurite Blob Storage on `lab04-net`, creates the `jenkins-artifacts` container, uploads `azure-build.txt`, and verifies via `az storage blob list -o table`.
 
 ---
 
