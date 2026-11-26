@@ -313,7 +313,7 @@ Add this helper to `~/.bashrc` (or run `./scripts/explain-log.sh`) to diagnose f
 ```bash
 explain-log() {
   curl -s http://localhost:11434/api/generate \
-    -d "\$(jq -n --arg log "\$1" '{model: "qwen2.5-coder:14b", prompt: ("Diagnose this Jenkins/DevOps error and give the exact fix:\n\n" + \$log), stream: false}')" \
+    -d "$(jq -n --arg log "$1" '{model: "qwen2.5-coder:14b", prompt: ("Diagnose this Jenkins/DevOps error and give the exact fix:\n\n" + $log), stream: false}')" \
     | jq -r '.response'
 }
 ```
