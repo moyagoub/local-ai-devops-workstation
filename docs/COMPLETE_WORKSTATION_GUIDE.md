@@ -159,17 +159,17 @@ sudo apt-get update && sudo apt-get install -y docker-buildx-plugin make curl tr
 ### Step 2: Install `kubectl` and `kind` on the WSL2 Host
 Because the containerized Jenkins controller mounts `/usr/local/bin/kubectl` and `/usr/local/bin/kind` read-only from the host, install both once in WSL2:
 ```bash
-curl -LO "https://k8s.io(curl -L -s https://k8s.io)/bin/linux/amd64/kubectl"
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
 sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl && rm -f kubectl
 
-curl -Lo ./kind https://k8s.io
+curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.25.0/kind-linux-amd64
 sudo install -o root -g root -m 0755 kind /usr/local/bin/kind && rm -f kind
 ```
 
 ### Step 3: Critical Real-World Engineering Fixes Applied Across All Labs
 1. **Zero Docker Hub (`docker.io`) CDN Dependency:** Docker Hub CloudFront CDN can block blob downloads with `403 Forbidden`. Every Dockerfile and pipeline pulls exclusively from resilient mirrors:
    - `public.ecr.aws/docker/library/...` & `public.ecr.aws/localstack/...` & `public.ecr.aws/hashicorp/...`
-   - `://microsoft.com` & `://microsoft.com`
+   - `mcr.microsoft.com/azure-storage/azurite` & `mcr.microsoft.com/azure-cli`
    - `ghcr.io/aquasecurity/trivy`
    - `quay.io/prometheus/...` & `quay.io/argoproj/...`
    - `registry.k8s.io/pause:3.10`
@@ -182,7 +182,7 @@ sudo install -o root -g root -m 0755 kind /usr/local/bin/kind && rm -f kind
 ## 5. Custom AI Guardrails (`.github/copilot-instructions.md`)
 
 The repository includes `.github/copilot-instructions.md` so Ollama automatically enforces security and reliability standards across every prompt:
-- Avoid `docker.io`; use `public.ecr.aws`, `://microsoft.com`, `ghcr.io`, `quay.io`, or `registry.k8s.io`.
+- Avoid `docker.io`; use `public.ecr.aws`, `mcr.microsoft.com`, `ghcr.io`, `quay.io`, or `registry.k8s.io`.
 - Use multi-stage Docker builds, pinned tags, and non-root container users (`USER appuser`).
 - Enforce AWS KMS CMK encryption with key rotation and S3 public access blocks in Terraform.
 - Enforce `runAsNonRoot`, `readOnlyRootFilesystem`, dropped `ALL` capabilities, `RuntimeDefault` seccomp, resource requests/limits, and health probes in Kubernetes manifests.
@@ -195,7 +195,7 @@ The repository includes `.github/copilot-instructions.md` so Ollama automaticall
 ### Step 1: Clone the Repository & Pre-Cache Terraform Providers
 ```bash
 cd ~
-git clone https://github.com
+git clone https://github.com/moyagoub/local-ai-devops-workstation.git
 cd ~/local-ai-devops-workstation
 
 # Pre-populate offline Terraform provider cache (AWS + AzureRM)
@@ -214,7 +214,7 @@ done
 *(Uses `ftp.belnet.be` mirror to bypass CloudFront `403` blocks and installs full `openjdk-21-jre` + `libharfbuzz0b` + `docker.io`)*:
 ```bash
 cd ~/local-ai-devops-workstation/jenkins
-curl -fL "https://belnet.be" -o jenkins.war
+curl -fL "https://ftp.belnet.be/mirror/ftp.jenkins-ci.org/war-stable/latest/jenkins.war" -o jenkins.war
 cd ~/local-ai-devops-workstation
 make jenkins-build
 ```
@@ -235,67 +235,85 @@ make jenkins-password
 ## 7. Step-by-Step Guide to All 6 CI/CD & DevSecOps Labs
 
 For every lab below, create a **Pipeline** job in Jenkins (`http://localhost:8080`):
-Use code with caution.
-1. Click New Item → enter the job name → select Pipeline → click OK.
-2. Under Pipeline, set Definition to Pipeline script from SCM → SCM: Git.
-3. Set Repository URL to /workspace/local-ai-devops-workstation and Branch Specifier to */main.
-4. Set Script Path to the lab's Jenkinsfile listed below, click Save, and click Build Now.
+1. Click **New Item** → enter the job name → select **Pipeline** → click **OK**.
+2. Under **Pipeline**, set **Definition** to **Pipeline script from SCM** → **SCM**: **Git**.
+3. Set **Repository URL** to `/workspace/local-ai-devops-workstation` and **Branch Specifier** to `*/main`.
+4. Set **Script Path** to the lab's `Jenkinsfile` listed below, click **Save**, and click **Build Now**.
 
-Lab 01: Container Build & Bridge Health Check (starter-lab/)
+---
 
-• Script Path: starter-lab/Jenkinsfile
-• What It Does:
-	1. Builds a multi-stage, non-root Python 3.12 Flask API image (devops-lab-api:local) from starter-lab/.
-	2. Starts test-api on the Docker bridge network, inspects its dynamic container IP (docker inspect), and verifies http://<CONTAINER_IP>:8080/health returns {"env":"local-lab","status":"ok"}.
-	3. Cleans up test-api in post { always }.
+### Lab 01: Container Build & Bridge Health Check (`starter-lab/`)
+- **Script Path:** `starter-lab/Jenkinsfile`
+- **What It Does:**
+  1. Builds a multi-stage, non-root Python 3.12 Flask API image (`devops-lab-api:local`) from `starter-lab/`.
+  2. Starts `test-api` on the Docker bridge network, inspects its dynamic container IP (`docker inspect`), and verifies `http://<CONTAINER_IP>:8080/health` returns `{"env":"local-lab","status":"ok"}`.
+  3. Cleans up `test-api` in `post { always }`.
 
-Lab 02: AWS DevSecOps Pipeline (lab-02-aws-terraform-trivy/)
+---
 
-• Script Path: lab-02-aws-terraform-trivy/Jenkinsfile
-• What It Does:
-	1. Trivy IaC Security Scan (ghcr.io/aquasecurity/trivy): Scans terraform/ with --severity HIGH,CRITICAL --exit-code 1, enforcing KMS Customer Managed Key encryption (enable_key_rotation = true), bucket versioning, and S3 public access blocks (AWS-0132).
-	2. LocalStack Cloud Emulator (public.ecr.aws/localstack/localstack:3.8.1): Launches LocalStack (SERVICES=s3,iam,sts,kms) on bridge network lab02-net.
-	3. Terraform Provisioning (public.ecr.aws/hashicorp/terraform:1.9): Uses the shared offline TF_PLUGIN_CACHE_DIR, runs fmt -check, validate, plan, and apply -auto-approve.
-	4. AWS CLI Verification (public.ecr.aws/aws-cli/aws-cli): Uploads artifact.txt to the KMS-encrypted S3 bucket and verifies s3api get-bucket-encryption.
+### Lab 02: AWS DevSecOps Pipeline (`lab-02-aws-terraform-trivy/`)
+- **Script Path:** `lab-02-aws-terraform-trivy/Jenkinsfile`
+- **What It Does:**
+  1. **Trivy IaC Security Scan (`ghcr.io/aquasecurity/trivy`):** Scans `terraform/` with `--severity HIGH,CRITICAL --exit-code 1`, enforcing KMS Customer Managed Key encryption (`enable_key_rotation = true`), bucket versioning, and S3 public access blocks (`AWS-0132`).
+  2. **LocalStack Cloud Emulator (`public.ecr.aws/localstack/localstack:3.8.1`):** Launches LocalStack (`SERVICES=s3,iam,sts,kms`) on bridge network `lab02-net`.
+  3. **Terraform Provisioning (`public.ecr.aws/hashicorp/terraform:1.9`):** Uses the shared offline `TF_PLUGIN_CACHE_DIR`, runs `fmt -check`, `validate`, `plan`, and `apply -auto-approve`.
+  4. **AWS CLI Verification (`public.ecr.aws/aws-cli/aws-cli`):** Uploads `artifact.txt` to the KMS-encrypted S3 bucket and verifies `s3api get-bucket-encryption`.
 
-Lab 03: Hardened Local Kubernetes CI/CD Pipeline (lab-03-kubernetes-kind/)
+---
 
-• Pre-requisite (Run once in WSL2):
-  bash docker build -f lab-03-kubernetes-kind/Dockerfile.k3s -t local-k3s-node:v1.31.2 lab-03-kubernetes-kind   
-• Script Path: lab-03-kubernetes-kind/Jenkinsfile
-• What It Does:
-	1. Trivy Kubernetes Manifest Scan: Validates k8s/ manifests (runAsNonRoot, readOnlyRootFilesystem, dropped ALL capabilities, RuntimeDefault seccomp, resource requests/limits, liveness/readiness probes).
-	2. App Image Build: Builds devops-k8s-api:v1.0.0.
-	3. Self-Contained K3s Cluster Bootstrap: Starts local-k3s-node:v1.31.2 with --pause-image=registry.k8s.io/pause:3.10, extracts and rewrites kubeconfig to the K3s container IP, and side-loads devops-k8s-api:v1.0.0 via docker save | k3s ctr images import -.
-	4. Rollout & Pod Smoke Test: Applies namespace.yaml, deployment.yaml (2 replicas), and service.yaml, waits for rollout completion, and queries /health directly on the Pod IP.
+### Lab 03: Hardened Local Kubernetes CI/CD Pipeline (`lab-03-kubernetes-kind/`)
+- **Pre-requisite (Run once in WSL2):**
+  ```bash
+  docker build -f lab-03-kubernetes-kind/Dockerfile.k3s -t local-k3s-node:v1.31.2 lab-03-kubernetes-kind
+  ```
+- **Script Path:** `lab-03-kubernetes-kind/Jenkinsfile`
+- **What It Does:**
+  1. **Trivy Kubernetes Manifest Scan:** Validates `k8s/` manifests (`runAsNonRoot`, `readOnlyRootFilesystem`, dropped `ALL` capabilities, `RuntimeDefault` seccomp, resource requests/limits, liveness/readiness probes).
+  2. **App Image Build:** Builds `devops-k8s-api:v1.0.0`.
+  3. **Self-Contained K3s Cluster Bootstrap:** Starts `local-k3s-node:v1.31.2` with `--pause-image=registry.k8s.io/pause:3.10`, extracts and rewrites `kubeconfig` to the K3s container IP, and side-loads `devops-k8s-api:v1.0.0` via `docker save | k3s ctr images import -`.
+  4. **Rollout & Pod Smoke Test:** Applies `namespace.yaml`, `deployment.yaml` (2 replicas), and `service.yaml`, waits for rollout completion, and queries `/health` directly on the Pod IP.
 
-Lab 04: Azure DevSecOps & Storage Pipeline (lab-04-azure-terraform-azurite/)
+---
 
-• Script Path: lab-04-azure-terraform-azurite/Jenkinsfile
-• What It Does:
-	1. Trivy AzureRM Security Scan: Enforces min_tls_version = "TLS1_2", https_traffic_only_enabled = true, private blob access, and deny-by-default network ACLs (AZU-0011, AZU-0012).
-	2. Terraform Validation: Runs offline init (via TF_PLUGIN_CACHE_DIR), fmt -check, and validate against hashicorp/azurerm v4.
-	3. Azurite & Azure CLI Integration (://microsoft.com): Spins up Azurite Blob Storage on lab04-net, creates the jenkins-artifacts container, uploads azure-build.txt, and verifies via az storage blob list -o table.
+### Lab 04: Azure DevSecOps & Storage Pipeline (`lab-04-azure-terraform-azurite/`)
+- **Script Path:** `lab-04-azure-terraform-azurite/Jenkinsfile`
+- **What It Does:**
+  1. **Trivy AzureRM Security Scan:** Enforces `min_tls_version = "TLS1_2"`, `https_traffic_only_enabled = true`, private blob access, and deny-by-default network ACLs (`AZU-0011`, `AZU-0012`).
+  2. **Terraform Validation:** Runs offline `init` (via `TF_PLUGIN_CACHE_DIR`), `fmt -check`, and `validate` against `hashicorp/azurerm` v4.
+  3. **Azurite & Azure CLI Integration (`://microsoft.com`):** Spins up Azurite Blob Storage on `lab04-net`, creates the `jenkins-artifacts` container, uploads `azure-build.txt`, and verifies via `az storage blob list -o table`.
 
-Lab 05: Ansible Server Hardening & Idempotency Pipeline (lab-05-ansible-hardening/)
+---
 
-• Pre-requisite (Run once in WSL2):
-  bash docker build -f lab-05-ansible-hardening/Dockerfile.ansible -t local-ansible-runner:latest lab-05-ansible-hardening   
-• Script Path: lab-05-ansible-hardening/Jenkinsfile
-• What It Does:
-	1. Lint & Syntax Check: Runs ansible-lint (production profile) and ansible-playbook --syntax-check.
-	2. Server Hardening & Web Deployment: Launches a minimal Ubuntu target container, bootstraps python3 via ansible.builtin.raw, creates a non-root devops user, hardens /etc/ssh/sshd_config (PermitRootLogin no, PasswordAuthentication no), and deploys hardened Nginx on port 8085.
-	3. Idempotency & Security Header Gates: Re-runs the playbook and asserts changed=0, then verifies X-Frame-Options: DENY and X-Content-Type-Options: nosniff via curl -I.
+### Lab 05: Ansible Server Hardening & Idempotency Pipeline (`lab-05-ansible-hardening/`)
+- **Pre-requisite (Run once in WSL2):**
+  ```bash
+  docker build -f lab-05-ansible-hardening/Dockerfile.ansible -t local-ansible-runner:latest lab-05-ansible-hardening
+  ```
+- **Script Path:** `lab-05-ansible-hardening/Jenkinsfile`
+- **What It Does:**
+  1. **Lint & Syntax Check:** Runs `ansible-lint` (production profile) and `ansible-playbook --syntax-check`.
+  2. **Server Hardening & Web Deployment:** Launches a minimal Ubuntu target container, bootstraps `python3` via `ansible.builtin.raw`, creates a non-root `devops` user, hardens `/etc/ssh/sshd_config` (`PermitRootLogin no`, `PasswordAuthentication no`), and deploys hardened Nginx on port `8085`.
+  3. **Idempotency & Security Header Gates:** Re-runs the playbook and asserts **`changed=0`**, then verifies `X-Frame-Options: DENY` and `X-Content-Type-Options: nosniff` via `curl -I`.
 
-Lab 06: Prometheus & Grafana Observability Pipeline (lab-06-prometheus-grafana/)
+---
 
-• Script Path: lab-06-prometheus-grafana/Jenkinsfile
-• What It Does:
-	1. Prometheus Config & Alert Validation: Runs promtool check config /etc/prometheus/prometheus.yml and validates alert-rules.yml.
-	2. Multi-Container Observability Stack (lab06-monitoring): Starts the instrumented Python /metrics API, node-exporter, prometheus (:9090), and grafana (:3000) with auto-provisioned Prometheus datasource YAML, temporarily attaching jenkins-local to lab06-monitoring.
-	3. Telemetry & Provisioning Verification: Generates traffic on /health, scrapes /metrics, verifies all 3 Prometheus scrape targets are "health":"up", and confirms Grafana's provisioned Prometheus datasource via REST API.
+### Lab 06: Prometheus & Grafana Observability Pipeline (`lab-06-prometheus-grafana/`)
+- **Script Path:** `lab-06-prometheus-grafana/Jenkinsfile`
+- **What It Does:**
+  1. **Prometheus Config & Alert Validation:** Runs `promtool check config /etc/prometheus/prometheus.yml` and validates `alert-rules.yml`.
+  2. **Multi-Container Observability Stack (`lab06-monitoring`):** Starts the instrumented Python `/metrics` API, `node-exporter`, `prometheus` (`:9090`), and `grafana` (`:3000`) with auto-provisioned Prometheus datasource YAML, temporarily attaching `jenkins-local` to `lab06-monitoring`.
+  3. **Telemetry & Provisioning Verification:** Generates traffic on `/health`, scrapes `/metrics`, verifies all 3 Prometheus scrape targets are `"health":"up"`, and confirms Grafana's provisioned Prometheus datasource via REST API.
 
-8. Terminal Log Debugger Helper (scripts/explain-log.sh)
+---
 
-Add this helper to ~/.bashrc (or run ./scripts/explain-log.sh) to diagnose failed Jenkins, Terraform, or Kubernetes logs straight from your terminal using your local RTX 3080 GPU:
-bash explain-log() { curl -s http://localhost:11434/api/generate \ -d "$(jq -n --arg log "$1" '{model: "qwen2.5-coder:14b", prompt: ("Diagnose this Jenkins/DevOps error and give the exact fix:\n\n" + $log), stream: false}')" \ | jq -r '.response' } 
+## 8. Terminal Log Debugger Helper (`scripts/explain-log.sh`)
+
+Add this helper to `~/.bashrc` (or run `./scripts/explain-log.sh`) to diagnose failed Jenkins, Terraform, or Kubernetes logs straight from your terminal using your local RTX 3080 GPU:
+
+```bash
+explain-log() {
+  curl -s http://localhost:11434/api/generate \
+    -d "\$(jq -n --arg log "\$1" '{model: "qwen2.5-coder:14b", prompt: ("Diagnose this Jenkins/DevOps error and give the exact fix:\n\n" + \$log), stream: false}')" \
+    | jq -r '.response'
+}
+```
